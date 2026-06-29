@@ -25,13 +25,24 @@ export function MatchCard({ match, prediction: initialPred, score, isOpen, userI
   const [home, setHome] = useState(initialPred?.pred_home ?? 0)
   const [away, setAway] = useState(initialPred?.pred_away ?? 0)
   const [advancer, setAdvancer] = useState<Side | null>((initialPred?.pred_advancer as Side) ?? null)
+  // Lock immediately if prediction already exists
+  const [locked, setLocked] = useState(initialPred !== null)
   const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
   const supabase = createClient()
 
+  const canEdit = isOpen && !locked
+
+  // For knockout: advancer is auto-determined unless scores are tied
+  const isDraw = home === away
+  const needsAdvancerPick = match.is_knockout && isDraw
+
   async function save() {
-    if (!isOpen) return
-    if (match.is_knockout && !advancer) return
+    if (!canEdit) return
+    const effectiveAdvancer = match.is_knockout
+      ? (isDraw ? advancer : home > away ? 'home' : 'away')
+      : null
+    if (match.is_knockout && !effectiveAdvancer) return
+
     setSaving(true)
     await supabase.from('predictions').upsert(
       {
@@ -39,13 +50,12 @@ export function MatchCard({ match, prediction: initialPred, score, isOpen, userI
         match_id: match.id,
         pred_home: home,
         pred_away: away,
-        pred_advancer: match.is_knockout ? advancer : null,
+        pred_advancer: effectiveAdvancer,
       },
       { onConflict: 'user_id,match_id' }
     )
     setSaving(false)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+    setLocked(true)
   }
 
   const pts = score?.points
@@ -64,7 +74,20 @@ export function MatchCard({ match, prediction: initialPred, score, isOpen, userI
           )}
           <span className="font-medium text-sm truncate">{match.home_team}</span>
         </div>
-        <span className="text-xs text-[var(--muted)] flex-shrink-0">vs</span>
+        <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
+          <span className="text-xs text-[var(--muted)]">vs</span>
+          <span
+            suppressHydrationWarning
+            className="text-[10px] text-[var(--muted)] tabular-nums"
+          >
+            {new Date(match.kickoff_at).toLocaleString(undefined, {
+              month: 'short',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
+          </span>
+        </div>
         <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
           <span className="font-medium text-sm truncate">{match.away_team}</span>
           {match.away_code && (
@@ -80,12 +103,13 @@ export function MatchCard({ match, prediction: initialPred, score, isOpen, userI
       {/* Prediction inputs */}
       <div className="px-4 py-4">
         <div className="flex items-center justify-center gap-6">
-          <ScoreInput value={home} onChange={setHome} disabled={!isOpen} />
+          <ScoreInput value={home} onChange={setHome} disabled={!canEdit} />
           <span className="text-[var(--muted)] font-bold text-lg">—</span>
-          <ScoreInput value={away} onChange={setAway} disabled={!isOpen} />
+          <ScoreInput value={away} onChange={setAway} disabled={!canEdit} />
         </div>
 
-        {match.is_knockout && (
+        {/* Only show advancer picker for knockout draws */}
+        {needsAdvancerPick && (
           <AdvancerPicker
             homeTeam={match.home_team}
             awayTeam={match.away_team}
@@ -93,7 +117,7 @@ export function MatchCard({ match, prediction: initialPred, score, isOpen, userI
             awayCode={match.away_code}
             value={advancer}
             onChange={setAdvancer}
-            disabled={!isOpen}
+            disabled={!canEdit}
           />
         )}
 
@@ -101,7 +125,7 @@ export function MatchCard({ match, prediction: initialPred, score, isOpen, userI
         {match.home_score != null && match.away_score != null && (
           <div className="mt-3 flex items-center justify-between text-sm border-t border-[var(--border)] pt-3">
             <span className="text-[var(--muted)]">
-              Resultado:{' '}
+              Result:{' '}
               <strong className="text-[var(--text)]">
                 {match.home_score} – {match.away_score}
               </strong>
@@ -117,23 +141,25 @@ export function MatchCard({ match, prediction: initialPred, score, isOpen, userI
           </div>
         )}
 
-        {isOpen && (
+        {canEdit && (
           <button
             onClick={save}
-            disabled={saving || (match.is_knockout && !advancer)}
-            className={`mt-3 w-full py-2.5 rounded-lg text-sm font-bold transition-all ${
-              saved
-                ? 'bg-[var(--green)]/20 text-[var(--green)] border border-[var(--green)]/30'
-                : 'bg-[var(--gold)] text-[var(--bg)] hover:bg-[var(--gold-2)] disabled:opacity-40'
-            }`}
+            disabled={saving || (needsAdvancerPick && !advancer)}
+            className="mt-3 w-full py-2.5 rounded-lg text-sm font-bold transition-all bg-[var(--gold)] text-[var(--bg)] hover:bg-[var(--gold-2)] disabled:opacity-40"
           >
-            {saved ? '✓ Guardado' : saving ? 'Guardando…' : 'Guardar'}
+            {saving ? 'Saving…' : 'Save'}
           </button>
         )}
 
-        {!isOpen && match.home_score == null && (
+        {!canEdit && locked && match.home_score == null && (
+          <p className="mt-2 text-center text-xs text-[var(--green)] uppercase tracking-widest">
+            ✓ Saved
+          </p>
+        )}
+
+        {!canEdit && !locked && match.home_score == null && (
           <p className="mt-2 text-center text-xs text-[var(--muted)] uppercase tracking-widest">
-            🔒 Cerrado
+            🔒 Locked
           </p>
         )}
       </div>

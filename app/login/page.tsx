@@ -11,10 +11,10 @@ export default async function LoginPage() {
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <h1 className="font-display text-5xl text-center mb-2">
-          <span className="text-[var(--muted)]">PRODE</span>{' '}
-          <span className="text-[var(--gold)]">MUNDIAL</span>
+          <span className="text-[var(--muted)]">WORLD</span>{' '}
+          <span className="text-[var(--gold)]">CUP 2026</span>
         </h1>
-        <p className="text-center text-[var(--muted)] text-sm mb-8">2026</p>
+        <p className="text-center text-[var(--muted)] text-sm mb-8">Prediction Pool</p>
         <LoginForm />
       </div>
     </div>

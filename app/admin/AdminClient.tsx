@@ -14,10 +14,10 @@ interface Props {
 type Tab = 'results' | 'locks' | 'deadlines' | 'champion' | 'admins'
 
 const TABS: { key: Tab; label: string }[] = [
-  { key: 'results', label: 'Resultados' },
-  { key: 'locks', label: 'Bloqueos' },
-  { key: 'deadlines', label: 'Fechas' },
-  { key: 'champion', label: 'Campeón' },
+  { key: 'results', label: 'Results' },
+  { key: 'locks', label: 'Locks' },
+  { key: 'deadlines', label: 'Deadlines' },
+  { key: 'champion', label: 'Champion' },
   { key: 'admins', label: 'Admins' },
 ]
 
@@ -97,7 +97,7 @@ export function AdminClient({
                     type="number"
                     min={0}
                     defaultValue={m.home_score ?? ''}
-                    placeholder="Local"
+                    placeholder="Home"
                     className="w-16 bg-[var(--surface-2)] border border-[var(--border)] rounded px-2 py-1.5 text-center text-sm tabular text-[var(--text)]"
                     onBlur={e => {
                       const v = parseInt(e.target.value)
@@ -109,7 +109,7 @@ export function AdminClient({
                     type="number"
                     min={0}
                     defaultValue={m.away_score ?? ''}
-                    placeholder="Visit."
+                    placeholder="Away"
                     className="w-16 bg-[var(--surface-2)] border border-[var(--border)] rounded px-2 py-1.5 text-center text-sm tabular text-[var(--text)]"
                     onBlur={e => {
                       const v = parseInt(e.target.value)
@@ -127,7 +127,7 @@ export function AdminClient({
                     }
                     className="bg-[var(--surface-2)] border border-[var(--border)] rounded px-2 py-1.5 text-sm text-[var(--text)]"
                   >
-                    <option value="">Sin penales</option>
+                    <option value="">No penalties</option>
                     <option value="home">Pen: {m.home_team}</option>
                     <option value="away">Pen: {m.away_team}</option>
                   </select>
@@ -142,7 +142,7 @@ export function AdminClient({
                   Final
                 </label>
                 {saving === m.id && (
-                  <span className="text-xs text-[var(--muted)]">Guardando…</span>
+                  <span className="text-xs text-[var(--muted)]">Saving…</span>
                 )}
               </div>
             </div>
@@ -167,7 +167,7 @@ export function AdminClient({
                   onChange={e => updateMatch(m.id, { predictions_locked: e.target.checked })}
                   className="accent-[var(--red)]"
                 />
-                <span className="text-[var(--red)]">Cerrar</span>
+                <span className="text-[var(--red)]">Lock</span>
               </label>
               <label className="flex items-center gap-2 text-sm">
                 <input
@@ -176,7 +176,7 @@ export function AdminClient({
                   onChange={e => updateMatch(m.id, { force_open: e.target.checked })}
                   className="accent-[var(--green)]"
                 />
-                <span className="text-[var(--green)]">Forzar abierto</span>
+                <span className="text-[var(--green)]">Force open</span>
               </label>
               {saving === m.id && (
                 <span className="text-xs text-[var(--muted)]">…</span>
@@ -216,11 +216,11 @@ export function AdminClient({
         <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5 space-y-4">
           <div className="flex items-start gap-4 flex-wrap">
             <div className="flex-1 min-w-[200px]">
-              <p className="text-sm text-[var(--muted)] mb-1">Respuesta correcta</p>
+              <p className="text-sm text-[var(--muted)] mb-1">Correct answer</p>
               <input
                 type="text"
                 defaultValue={champion.correct_answer ?? ''}
-                placeholder="Equipo campeón…"
+                placeholder="Champion team…"
                 onBlur={e =>
                   updateChampion({ correct_answer: e.target.value || null })
                 }
@@ -228,7 +228,7 @@ export function AdminClient({
               />
             </div>
             <div>
-              <p className="text-sm text-[var(--muted)] mb-1">Puntos</p>
+              <p className="text-sm text-[var(--muted)] mb-1">Points</p>
               <input
                 type="number"
                 min={0}
@@ -247,10 +247,10 @@ export function AdminClient({
               onChange={e => updateChampion({ locked: e.target.checked })}
               className="accent-[var(--red)]"
             />
-            Cerrar pronóstico de campeón
+            Lock champion prediction
           </label>
           {saving === 'champion' && (
-            <span className="text-xs text-[var(--muted)]">Guardando…</span>
+            <span className="text-xs text-[var(--muted)]">Saving…</span>
           )}
         </div>
       )}
@@ -267,7 +267,7 @@ export function AdminClient({
               </div>
               {p.id === currentUserId ? (
                 <span className="text-xs text-[var(--gold)] px-2 py-1 border border-[var(--gold)]/30 rounded">
-                  Tú
+                  You
                 </span>
               ) : (
                 <label className="flex items-center gap-2 text-sm">

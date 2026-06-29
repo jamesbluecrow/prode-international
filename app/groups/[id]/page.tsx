@@ -38,7 +38,7 @@ export default async function GroupDetailPage({
         <LeaderboardTable rows={rows} currentUserId={user.id} />
       ) : (
         <p className="text-[var(--muted)] text-center py-8 text-sm">
-          Aún no hay puntos en este grupo.
+          No points in this group yet.
         </p>
       )}
     </div>

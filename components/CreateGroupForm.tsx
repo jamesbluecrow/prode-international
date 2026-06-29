@@ -30,7 +30,7 @@ export function CreateGroupForm() {
       <input
         value={name}
         onChange={e => setName(e.target.value)}
-        placeholder="Nombre del grupo"
+        placeholder="Group name"
         required
         maxLength={40}
         className="w-full bg-[var(--surface-2)] border border-[var(--border)] rounded-lg px-4 py-3 text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--gold)]"
@@ -38,7 +38,7 @@ export function CreateGroupForm() {
       <input
         value={region}
         onChange={e => setRegion(e.target.value)}
-        placeholder="Subtítulo (ej: Oficina, Familia)"
+        placeholder="Subtitle (e.g. Office, Family)"
         maxLength={40}
         className="w-full bg-[var(--surface-2)] border border-[var(--border)] rounded-lg px-4 py-3 text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--gold)]"
       />
@@ -48,7 +48,7 @@ export function CreateGroupForm() {
         disabled={loading}
         className="w-full bg-[var(--gold)] text-[var(--bg)] font-bold py-3 rounded-lg hover:bg-[var(--gold-2)] disabled:opacity-50"
       >
-        {loading ? 'Creando…' : 'Crear Grupo'}
+        {loading ? 'Creating…' : 'Create Group'}
       </button>
     </form>
   )

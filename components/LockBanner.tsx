@@ -8,7 +8,7 @@ export function LockBanner({ locked, label }: Props) {
   return (
     <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium bg-[var(--red)]/10 text-[var(--red)] border border-[var(--red)]/20">
       <span>🔒</span>
-      <span className="uppercase tracking-widest">{label ?? 'Cerrado'}</span>
+      <span className="uppercase tracking-widest">{label ?? 'Locked'}</span>
     </div>
   )
 }

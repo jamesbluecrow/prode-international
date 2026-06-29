@@ -25,22 +25,22 @@ export default async function DashboardPage() {
   return (
     <div className="py-6 space-y-8">
       <div>
-        <p className="text-[var(--muted)] text-sm">Bienvenido,</p>
+        <p className="text-[var(--muted)] text-sm">Welcome,</p>
         <h1 className="font-display text-4xl text-[var(--gold)]">
-          {(user.email?.split('@')[0] ?? 'JUGADOR').toUpperCase()}
+          {(user.email?.split('@')[0] ?? 'PLAYER').toUpperCase()}
         </h1>
       </div>
 
       <div className="grid grid-cols-3 gap-3">
-        <StatTile label="Puntos" value={myRow?.total_points ?? 0} />
-        <StatTile label="Posición" value={rank > 0 ? `#${rank}` : '–'} />
-        <StatTile label="Exactos" value={myRow?.exact_hits ?? 0} />
+        <StatTile label="Points" value={myRow?.total_points ?? 0} />
+        <StatTile label="Rank" value={rank > 0 ? `#${rank}` : '–'} />
+        <StatTile label="Exact" value={myRow?.exact_hits ?? 0} />
       </div>
 
       {(nextMatches ?? []).length > 0 && (
         <section>
           <h2 className="font-display text-xl text-[var(--text)] mb-3">
-            PRÓXIMOS PARTIDOS
+            UPCOMING MATCHES
           </h2>
           <div className="space-y-2">
             {(nextMatches ?? []).map((m: Match) => {
@@ -77,7 +77,7 @@ export default async function DashboardPage() {
                         : 'bg-[var(--red)]/20 text-[var(--red)]'
                     }`}
                   >
-                    {hasPred ? '✓ Listo' : 'Pendiente'}
+                    {hasPred ? '✓ Done' : 'Pending'}
                   </span>
                 </Link>
               )
@@ -92,28 +92,28 @@ export default async function DashboardPage() {
           className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4 text-center hover:border-[var(--gold)]/40 transition-colors"
         >
           <p className="font-display text-lg text-[var(--gold)]">PREDECIR</p>
-          <p className="text-xs text-[var(--muted)] mt-1">Completar pronósticos</p>
+          <p className="text-xs text-[var(--muted)] mt-1">Make predictions</p>
         </Link>
         <Link
           href="/ranking"
           className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4 text-center hover:border-[var(--gold)]/40 transition-colors"
         >
           <p className="font-display text-lg text-[var(--gold)]">RANKING</p>
-          <p className="text-xs text-[var(--muted)] mt-1">Ver tabla global</p>
+          <p className="text-xs text-[var(--muted)] mt-1">Global standings</p>
         </Link>
         <Link
           href="/groups"
           className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4 text-center hover:border-[var(--gold)]/40 transition-colors"
         >
           <p className="font-display text-lg text-[var(--gold)]">GRUPOS</p>
-          <p className="text-xs text-[var(--muted)] mt-1">Crear y unirse</p>
+          <p className="text-xs text-[var(--muted)] mt-1">Create & join</p>
         </Link>
         <Link
           href="/champion"
           className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4 text-center hover:border-[var(--gold)]/40 transition-colors"
         >
-          <p className="font-display text-lg text-[var(--gold)]">CAMPEÓN</p>
-          <p className="text-xs text-[var(--muted)] mt-1">Tu elección</p>
+          <p className="font-display text-lg text-[var(--gold)]">CHAMPION</p>
+          <p className="text-xs text-[var(--muted)] mt-1">Your pick</p>
         </Link>
       </div>
     </div>

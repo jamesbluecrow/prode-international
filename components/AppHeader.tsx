@@ -6,10 +6,10 @@ import { useRouter } from 'next/navigation'
 import type { User } from '@supabase/supabase-js'
 
 const NAV = [
-  { href: '/predict', label: 'Predecir' },
+  { href: '/predict', label: 'Predict' },
   { href: '/ranking', label: 'Ranking' },
-  { href: '/groups', label: 'Grupos' },
-  { href: '/champion', label: 'Campeón' },
+  { href: '/groups', label: 'Groups' },
+  { href: '/champion', label: 'Champion' },
 ]
 
 export function AppHeader({ user }: { user: User }) {
@@ -27,7 +27,7 @@ export function AppHeader({ user }: { user: User }) {
     <header className="sticky top-0 z-50 bg-[var(--surface)] border-b border-[var(--border)]">
       <div className="max-w-2xl mx-auto px-4 flex items-center gap-4 h-14">
         <Link href="/" className="font-display text-xl text-[var(--gold)] mr-auto">
-          PRODE <span className="text-[var(--muted)]">2026</span>
+          PRODE <span className="text-[var(--muted)]">INT'L</span>
         </Link>
         <nav className="hidden sm:flex items-center gap-1">
           {NAV.map(({ href, label }) => (
@@ -48,7 +48,7 @@ export function AppHeader({ user }: { user: User }) {
           onClick={signOut}
           className="text-xs text-[var(--muted)] hover:text-[var(--red)] transition-colors"
         >
-          Salir
+          Sign out
         </button>
       </div>
       {/* Mobile bottom nav */}

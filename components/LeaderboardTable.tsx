@@ -12,7 +12,7 @@ export function LeaderboardTable({ rows, currentUserId }: Props) {
     <div className="space-y-2">
       {rows.map((row, i) => {
         const isMe = row.user_id === currentUserId
-        const name = row.display_name ?? 'Usuario'
+        const name = row.display_name ?? 'User'
         return (
           <div
             key={row.user_id ?? i}
@@ -30,11 +30,11 @@ export function LeaderboardTable({ rows, currentUserId }: Props) {
               >
                 {name}
                 {isMe && (
-                  <span className="ml-2 text-xs text-[var(--green)] opacity-70">tú</span>
+                  <span className="ml-2 text-xs text-[var(--green)] opacity-70">you</span>
                 )}
               </p>
               <p className="text-xs text-[var(--muted)]">
-                {row.exact_hits ?? 0} exactos
+                {row.exact_hits ?? 0} exact
               </p>
             </div>
             <span

@@ -4,12 +4,12 @@ import { MatchCard } from '@/components/MatchCard'
 import type { Match, Prediction, PredictionScore } from '@/lib/types'
 
 const STAGE_LABELS: Record<string, string> = {
-  group: 'Fase de Grupos',
-  round_of_32: 'Ronda de 32',
-  round_of_16: 'Octavos de Final',
-  quarter: 'Cuartos de Final',
-  semi: 'Semifinales',
-  third_place: 'Tercer Puesto',
+  group: 'Group Stage',
+  round_of_32: 'Round of 32',
+  round_of_16: 'Round of 16',
+  quarter: 'Quarterfinals',
+  semi: 'Semifinals',
+  third_place: 'Third Place',
   final: 'Final',
 }
 
@@ -40,15 +40,18 @@ export default async function PredictPage() {
   function isOpen(match: Match): boolean {
     if (match.force_open) return true
     if (match.predictions_locked) return false
+    if (match.result_final) return false
     if (match.kickoff_at <= now) return false
+    // Future rounds with TBD teams aren't playable yet
+    if (!match.home_code || !match.away_code) return false
     return true
   }
 
   return (
     <div className="py-6 space-y-8">
       <h1 className="font-display text-3xl">
-        <span className="text-[var(--muted)]">MI</span>{' '}
-        <span className="text-[var(--gold)]">PRODE</span>
+        <span className="text-[var(--muted)]">MY</span>{' '}
+        <span className="text-[var(--gold)]">PREDICTIONS</span>
       </h1>
 
       {STAGE_ORDER.filter(s => byStage.has(s)).map(stage => (
@@ -73,7 +76,7 @@ export default async function PredictPage() {
 
       {(matches ?? []).length === 0 && (
         <p className="text-[var(--muted)] text-center py-12">
-          No hay partidos cargados aún.
+          No matches loaded yet.
         </p>
       )}
     </div>

@@ -56,7 +56,7 @@ export default async function MatchDetailPage({
           </h1>
           {match.home_score != null && (
             <p className="text-[var(--muted)] text-sm">
-              Resultado:{' '}
+              Result:{' '}
               <strong className="text-[var(--text)]">
                 {match.home_score} – {match.away_score}
               </strong>
@@ -91,13 +91,13 @@ export default async function MatchDetailPage({
               <ColorAvatar name={profile?.display_name ?? '?'} />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">
-                  {profile?.display_name ?? 'Usuario'}
+                  {profile?.display_name ?? 'User'}
                 </p>
                 <p className="text-xs text-[var(--muted)] tabular">
                   {s.pred_home} – {s.pred_away}
                   {s.pred_advancer && (
                     <span className="ml-1">
-                      · avanza{' '}
+                      · advances{' '}
                       {s.pred_advancer === 'home' ? match.home_team : match.away_team}
                     </span>
                   )}
@@ -113,7 +113,7 @@ export default async function MatchDetailPage({
         })}
         {(scores ?? []).length === 0 && (
           <p className="text-[var(--muted)] text-center py-8 text-sm">
-            Los pronósticos se revelan cuando el partido cierra.
+            Predictions are revealed when the match closes.
           </p>
         )}
       </div>

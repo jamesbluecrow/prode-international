@@ -27,7 +27,7 @@ export function JoinGroupBox() {
         <input
           value={code}
           onChange={e => setCode(e.target.value.toUpperCase())}
-          placeholder="Código del grupo"
+          placeholder="Group code"
           required
           className="flex-1 bg-[var(--surface-2)] border border-[var(--border)] rounded-lg px-4 py-3 text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--gold)] uppercase tracking-wider"
         />
@@ -36,7 +36,7 @@ export function JoinGroupBox() {
           disabled={loading}
           className="bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] font-medium px-5 py-3 rounded-lg hover:border-[var(--gold)] disabled:opacity-50 transition-colors"
         >
-          {loading ? '…' : 'Unirse'}
+          {loading ? '…' : 'Join'}
         </button>
       </div>
       {error && <p className="text-[var(--red)] text-sm">{error}</p>}

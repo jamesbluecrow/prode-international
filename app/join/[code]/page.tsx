@@ -17,9 +17,9 @@ export default async function JoinPage({
   if (error || !group) {
     return (
       <div className="py-12 text-center">
-        <p className="text-[var(--red)] mb-2">Grupo no encontrado o lleno.</p>
+        <p className="text-[var(--red)] mb-2">Group not found or full.</p>
         <a href="/groups" className="text-[var(--gold)] text-sm hover:underline">
-          Ver mis grupos
+          View my groups
         </a>
       </div>
     )

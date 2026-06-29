@@ -18,7 +18,7 @@ export default async function RankingPage() {
       {rows && rows.length > 0 ? (
         <LeaderboardTable rows={rows} currentUserId={user.id} />
       ) : (
-        <p className="text-[var(--muted)] text-center py-12">Aún no hay puntos.</p>
+        <p className="text-[var(--muted)] text-center py-12">No points yet.</p>
       )}
     </div>
   )

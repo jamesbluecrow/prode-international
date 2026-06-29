@@ -22,8 +22,8 @@ export default async function GroupsPage() {
   return (
     <div className="py-6 space-y-8">
       <h1 className="font-display text-3xl">
-        <span className="text-[var(--muted)]">MIS</span>{' '}
-        <span className="text-[var(--gold)]">GRUPOS</span>
+        <span className="text-[var(--muted)]">MY</span>{' '}
+        <span className="text-[var(--gold)]">GROUPS</span>
       </h1>
 
       {(groups ?? []).length > 0 ? (
@@ -50,16 +50,16 @@ export default async function GroupsPage() {
           ))}
         </div>
       ) : (
-        <p className="text-[var(--muted)] text-sm">Todavía no estás en ningún grupo.</p>
+        <p className="text-[var(--muted)] text-sm">You&apos;re not in any group yet.</p>
       )}
 
       <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5">
-        <h2 className="font-display text-xl mb-4 text-[var(--text)]">Unirse con código</h2>
+        <h2 className="font-display text-xl mb-4 text-[var(--text)]">Join with code</h2>
         <JoinGroupBox />
       </div>
 
       <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5">
-        <h2 className="font-display text-xl mb-4 text-[var(--text)]">Crear grupo</h2>
+        <h2 className="font-display text-xl mb-4 text-[var(--text)]">Create group</h2>
         <CreateGroupForm />
       </div>
     </div>

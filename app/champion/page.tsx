@@ -18,16 +18,16 @@ export default async function ChampionPage() {
   return (
     <div className="py-6">
       <h1 className="font-display text-3xl mb-1">
-        <span className="text-[var(--muted)]">CAMPEÓN</span>{' '}
-        <span className="text-[var(--gold)]">MUNDIAL</span>
+        <span className="text-[var(--muted)]">WORLD</span>{' '}
+        <span className="text-[var(--gold)]">CHAMPION</span>
       </h1>
       {bonus && (
         <p className="text-[var(--muted)] text-sm mb-6">
-          {bonus.points > 0 ? `Vale ${bonus.points} puntos` : 'Sin puntos por ahora'}
+          {bonus.points > 0 ? `Worth ${bonus.points} points` : 'No points assigned yet'}
           {bonus.lock_at && !isLocked && (
             <span className="ml-2">
-              · Cierra{' '}
-              {new Date(bonus.lock_at).toLocaleDateString('es', {
+              · Closes{' '}
+              {new Date(bonus.lock_at).toLocaleDateString('en', {
                 day: 'numeric',
                 month: 'long',
               })}
@@ -43,7 +43,7 @@ export default async function ChampionPage() {
           isLocked={isLocked}
         />
       ) : (
-        <p className="text-[var(--muted)]">No disponible aún.</p>
+        <p className="text-[var(--muted)]">Not available yet.</p>
       )}
     </div>
   )

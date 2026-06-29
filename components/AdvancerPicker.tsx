@@ -15,7 +15,7 @@ export function AdvancerPicker({ homeTeam, awayTeam, homeCode, awayCode, value, 
   return (
     <div className="mt-3">
       <p className="text-xs text-[var(--muted)] text-center mb-2 uppercase tracking-widest">
-        ¿Quién avanza?
+        Who advances?
       </p>
       <div className="flex gap-2">
         {(['home', 'away'] as Side[]).map(side => {
