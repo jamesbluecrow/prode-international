@@ -152,10 +152,9 @@ create table phase_deadlines (
   stage text primary key,
   lock_at timestamptz not null
 );
--- Real 2026 dates: each knockout phase closes at its start. SET EXACT first-kickoff
--- times/timezone in the admin UI; these are placeholders at 16:00 UTC.
+-- NOTE: round_of_32 is intentionally omitted — predictions lock per individual match kickoff.
+-- The round_of_32 phase deadline was removed so each R32 match closes at its own kickoff_at.
 insert into phase_deadlines (stage, lock_at) values
-  ('round_of_32','2026-06-28T16:00:00Z'),
   ('round_of_16','2026-07-04T16:00:00Z'),
   ('quarter',    '2026-07-09T16:00:00Z'),
   ('semi',       '2026-07-14T16:00:00Z'),
@@ -172,9 +171,9 @@ create table tournament_bonuses (
   is_active boolean not null default true,
   created_at timestamptz not null default now()
 );
--- champion auto-locks at the first knockout kickoff (Jun 28, 2026); admin can override.
+-- champion auto-locks at the Final kickoff (Jul 19, 2026 18:00 UTC); admin can override.
 insert into tournament_bonuses (key, label, points, lock_at)
-  values ('champion','Campeón del Mundial',0,'2026-06-28T16:00:00Z');
+  values ('champion','World Champion',30,'2026-07-19T18:00:00Z');
 
 create table bonus_predictions (
   id uuid primary key default gen_random_uuid(),
@@ -247,8 +246,9 @@ create trigger profiles_guard_is_admin
   before update on profiles for each row execute function guard_is_admin();
 
 -- create a group (auto-generates a typable invite_code, adds creator as member)
+-- SECURITY INVOKER so auth.uid() resolves to the calling user (not the function owner)
 create or replace function create_group(p_name text, p_region text default null)
-returns groups language plpgsql security definer as $$
+returns groups language plpgsql security invoker set search_path = public as $$
 declare g groups; base text; code text; n int := 0;
 begin
   base := trim(both '-' from upper(regexp_replace(p_name,'[^a-zA-Z0-9]+','-','g')));
@@ -264,8 +264,9 @@ begin
 end $$;
 
 -- join a group by typing its code/label (case-insensitive); also used by the share link
+-- SECURITY INVOKER so auth.uid() resolves to the calling user
 create or replace function join_group(p_code text)
-returns groups language plpgsql security definer as $$
+returns groups language plpgsql security invoker set search_path = public as $$
 declare g groups; cnt int;
 begin
   select * into g from groups where upper(invite_code) = upper(trim(p_code));
@@ -276,6 +277,16 @@ begin
     on conflict do nothing;
   return g;
 end $$;
+
+-- Helper to check group membership without triggering RLS recursion on group_members.
+-- SECURITY DEFINER here is intentional: it bypasses RLS only to answer a yes/no membership
+-- question for the current user (auth.uid()), so no privilege escalation occurs.
+create or replace function is_group_member(p_group_id uuid)
+returns boolean language sql security definer stable set search_path = public as $$
+  select exists (
+    select 1 from group_members where group_id = p_group_id and user_id = auth.uid()
+  );
+$$;
 
 -- ---------- scoring views ----------
 create or replace view prediction_scores with (security_invoker = on) as
@@ -403,9 +414,9 @@ create policy "create own group" on groups
 create policy "creator or admin update group" on groups
   for update using (created_by = auth.uid() or is_admin());
 
+-- Uses is_group_member() helper to avoid infinite RLS recursion (policy cannot self-reference group_members)
 create policy "members read membership" on group_members
-  for select using (is_admin() or exists (
-    select 1 from group_members me where me.group_id = group_members.group_id and me.user_id = auth.uid()));
+  for select using (is_admin() or is_group_member(group_id));
 create policy "join self" on group_members for insert with check (user_id = auth.uid());
 create policy "leave self" on group_members for delete using (user_id = auth.uid() or is_admin());
 ```
@@ -528,14 +539,14 @@ Point-tier colours from their rules screen: **10 gold · 7 green · 5 blue · 0 
 ### Confirmed
 - Scoring: prodegame-exact (draw=5, knockout floor 3, +3 only if a draw was predicted). ✓
 - Auth: magic link **+ Google**. ✓
-- Champion pick: selectable now, **0 points**, flip on later via the bonus row. ✓
+- Champion pick: selectable now, **30 points**, lock-once (cannot be changed after saving). ✓
 - Rankings: **global + private groups**, predictions global per user. ✓
 - Group join: by **share link** *and* by typing the **invite code/label** in the UI. ✓
 - Locking: per-match kickoff auto-lock, **per-knockout-phase date deadline** (seeded from real
   2026 dates), with **two-way admin override** (`predictions_locked` to lock early, `force_open`
   to keep open). ✓
 - **Multiple admins**, with self-escalation blocked at the DB level. ✓
-- Champion pick **auto-locks at the first knockout kickoff (Jun 28, 2026)** via
+- Champion pick **auto-locks at the Final kickoff (Jul 19, 2026 18:00 UTC)** via
   `tournament_bonuses.lock_at`; an admin can lock earlier (`locked = true`) or push the date. ✓
 - **Any authenticated player can create groups** (and is auto-added as the creator/member);
   admins can also manage any group. ✓
