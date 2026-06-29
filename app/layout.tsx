@@ -21,11 +21,14 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
+  const { data: profile } = user
+    ? await supabase.from('profiles').select('is_admin').eq('id', user.id).single()
+    : { data: null }
 
   return (
     <html lang="en" className={`${inter.variable} ${saira.variable}`}>
       <body className="min-h-screen bg-[var(--bg)]">
-        {user && <AppHeader user={user} />}
+        {user && <AppHeader user={user} isAdmin={profile?.is_admin ?? false} />}
         <main className="max-w-2xl mx-auto px-4 pb-24">{children}</main>
         <footer className="text-center py-8 text-[var(--muted)] text-xs">
           <span className="font-display text-[var(--gold)]">SUPER PRODE INTERNATIONAL</span>

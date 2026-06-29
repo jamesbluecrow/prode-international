@@ -14,7 +14,7 @@ const NAV = [
   { href: '/rules', label: 'Rules' },
 ]
 
-export function AppHeader({ user }: { user: User }) {
+export function AppHeader({ user, isAdmin = false }: { user: User; isAdmin?: boolean }) {
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
@@ -45,6 +45,18 @@ export function AppHeader({ user }: { user: User }) {
               {label}
             </Link>
           ))}
+          {isAdmin && (
+            <Link
+              href="/admin"
+              className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                pathname.startsWith('/admin')
+                  ? 'bg-[var(--surface-2)] text-[var(--red)]'
+                  : 'text-[var(--muted)] hover:text-[var(--red)]'
+              }`}
+            >
+              Admin
+            </Link>
+          )}
         </nav>
         <button
           onClick={signOut}
@@ -66,6 +78,16 @@ export function AppHeader({ user }: { user: User }) {
             {label}
           </Link>
         ))}
+        {isAdmin && (
+          <Link
+            href="/admin"
+            className={`flex-1 py-3 text-center text-xs font-medium transition-colors ${
+              pathname.startsWith('/admin') ? 'text-[var(--red)]' : 'text-[var(--muted)]'
+            }`}
+          >
+            Admin
+          </Link>
+        )}
       </nav>
     </header>
   )
