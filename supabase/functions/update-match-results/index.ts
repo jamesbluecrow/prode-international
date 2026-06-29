@@ -22,7 +22,7 @@ function normalizeTeamName(name: string): string {
 
 // ─── ESPN helpers ─────────────────────────────────────────────────────────────
 
-function parseESPNPenaltyWinner(notes: Array<{ text: string }>): string | null {
+function parseESPNPenaltyWinnerName(notes: Array<{ text: string }>): string | null {
   for (const note of notes) {
     const lower = note.text.toLowerCase();
     if (!lower.includes("penalt") && !lower.includes("shootout")) continue;
@@ -43,7 +43,7 @@ function toDateKey(isoString: string): string {
 
 const ESPN_SLUGS = ["fifa.world", "fifa.worldcup", "fifa.world2026"];
 
-type MatchResult = { homeScore: number; awayScore: number; penaltyWinner: string | null };
+type MatchResult = { homeScore: number; awayScore: number; penaltyWinner: "home" | "away" | null };
 type MatchRow = {
   id: string;
   home_team: string;
@@ -86,12 +86,37 @@ async function fetchFromESPN(match: MatchRow): Promise<MatchResult | null> {
 
       if (!event.status?.type?.completed) return null;
 
+      let penaltyWinner: "home" | "away" | null = null;
+
+      if (match.is_knockout) {
+        const statusName: string = event.status?.type?.name ?? "";
+        const shortDetail: string = event.status?.type?.shortDetail ?? "";
+        const isPen = statusName.includes("PEN") || statusName.includes("PENALTIES") ||
+          shortDetail.toLowerCase().includes("pen");
+
+        if (isPen) {
+          // Method 1: parse team name from notes text
+          const winnerName = parseESPNPenaltyWinnerName(comp.notes ?? []);
+          if (winnerName) {
+            const winnerNorm = normalizeTeamName(winnerName);
+            if (winnerNorm === homeNorm) penaltyWinner = "home";
+            else if (winnerNorm === awayNorm) penaltyWinner = "away";
+          }
+          // Method 2: compare shootout scores on competitors
+          if (!penaltyWinner) {
+            const homePen = homeComp.shootoutScore ?? homeComp.penaltyScore;
+            const awayPen = awayComp.shootoutScore ?? awayComp.penaltyScore;
+            if (homePen != null && awayPen != null) {
+              penaltyWinner = parseInt(homePen) > parseInt(awayPen) ? "home" : "away";
+            }
+          }
+        }
+      }
+
       return {
         homeScore: parseInt(homeComp.score, 10),
         awayScore: parseInt(awayComp.score, 10),
-        penaltyWinner: match.is_knockout
-          ? parseESPNPenaltyWinner(comp.notes ?? [])
-          : null,
+        penaltyWinner,
       };
     }
   }
@@ -122,10 +147,13 @@ async function fetchFromFDO(match: MatchRow): Promise<MatchResult | null> {
       normalizeTeamName(m.awayTeam.name) !== awayNorm
     ) continue;
 
-    const penalties = m.score.penalties as { home: number; away: number } | null;
-    const penaltyWinner = match.is_knockout && penalties
-      ? (penalties.home > penalties.away ? match.home_team : match.away_team)
-      : null;
+    let penaltyWinner: "home" | "away" | null = null;
+    if (match.is_knockout) {
+      const penalties = m.score.penalties as { home: number; away: number } | null;
+      if (penalties) {
+        penaltyWinner = penalties.home > penalties.away ? "home" : "away";
+      }
+    }
 
     return {
       homeScore: m.score.fullTime.home as number,
@@ -157,14 +185,12 @@ async function fetchMatchResult(match: MatchRow): Promise<MatchResult | null> {
 
 export default {
   fetch: withSupabase({ auth: ["secret"] }, async (req, ctx) => {
-    // Optional: scope to a single match (used by per-match scheduled jobs)
     let matchId: string | null = null;
     try {
       const body = await req.json();
       matchId = body.matchId ?? null;
     } catch { /* empty body = process all pending */ }
 
-    // Only fetch matches that kicked off 90+ minutes ago and have no result
     const cutoff = new Date(Date.now() - 90 * 60 * 1000).toISOString();
 
     let query = ctx.supabaseAdmin
@@ -217,7 +243,7 @@ export default {
         errors.push(`Update failed for ${match.home_team} vs ${match.away_team}: ${updateError.message}`);
         skipped++;
       } else {
-        console.log(`Updated: ${match.home_team} ${result.homeScore}-${result.awayScore} ${match.away_team}`);
+        console.log(`Updated: ${match.home_team} ${result.homeScore}-${result.awayScore} ${match.away_team}${result.penaltyWinner ? ` (pen: ${result.penaltyWinner})` : ""}`);
         updated++;
       }
     }

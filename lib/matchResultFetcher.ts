@@ -3,7 +3,7 @@ import type { Match } from '@/lib/types'
 export type MatchResult = {
   homeScore: number
   awayScore: number
-  penaltyWinner: string | null
+  penaltyWinner: 'home' | 'away' | null
 }
 
 // ─── Team name normalisation ──────────────────────────────────────────────────
@@ -27,7 +27,8 @@ export function normalizeTeamName(name: string): string {
 
 // ─── ESPN helpers ─────────────────────────────────────────────────────────────
 
-export function parseESPNPenaltyWinner(notes: Array<{ text: string }>): string | null {
+// Returns the winning team name as it appears in the notes text
+function parseESPNPenaltyWinnerName(notes: Array<{ text: string }>): string | null {
   for (const note of notes) {
     const lower = note.text.toLowerCase()
     if (!lower.includes('penalt') && !lower.includes('shootout')) continue
@@ -46,7 +47,6 @@ function toDateKey(isoString: string): string {
   ].join('')
 }
 
-// Slugs to try in order — WC 2026 slug is unconfirmed, we try all three
 const ESPN_SLUGS = ['fifa.world', 'fifa.worldcup', 'fifa.world2026']
 
 async function fetchFromESPN(match: Match): Promise<MatchResult | null> {
@@ -85,12 +85,39 @@ async function fetchFromESPN(match: Match): Promise<MatchResult | null> {
 
       if (!event.status?.type?.completed) return null
 
+      // Determine penalty winner — only meaningful for knockout matches
+      let penaltyWinner: 'home' | 'away' | null = null
+      if (match.is_knockout) {
+        // Method 1: status type indicates penalties were needed
+        const statusName: string = event.status?.type?.name ?? ''
+        const isPen = statusName.includes('PEN') || statusName.includes('PENALTIES') ||
+          (event.status?.type?.shortDetail ?? '').toLowerCase().includes('pen')
+
+        if (isPen) {
+          // Try to get winner from notes text
+          const winnerName = parseESPNPenaltyWinnerName(comp.notes ?? [])
+          if (winnerName) {
+            const winnerNorm = normalizeTeamName(winnerName)
+            if (winnerNorm === homeNorm) penaltyWinner = 'home'
+            else if (winnerNorm === awayNorm) penaltyWinner = 'away'
+          }
+          // Fallback: check if competitors have a penalty score field
+          if (!penaltyWinner) {
+            const homePen = homeComp.shootoutScore ?? homeComp.penaltyScore
+            const awayPen = awayComp.shootoutScore ?? awayComp.penaltyScore
+            if (homePen != null && awayPen != null) {
+              penaltyWinner = parseInt(homePen) > parseInt(awayPen) ? 'home' : 'away'
+            }
+          }
+          // Last resort: check if one side has more goals (extra time winner)
+          // In draws that go to pens, regular score is equal — we can't determine from score alone
+        }
+      }
+
       return {
         homeScore: parseInt(homeComp.score, 10),
         awayScore: parseInt(awayComp.score, 10),
-        penaltyWinner: match.is_knockout
-          ? parseESPNPenaltyWinner(comp.notes ?? [])
-          : null,
+        penaltyWinner,
       }
     }
   }
@@ -98,15 +125,13 @@ async function fetchFromESPN(match: Match): Promise<MatchResult | null> {
   return null
 }
 
-// ─── football-data.org helpers ────────────────────────────────────────────────
+// ─── football-data.org fallback ───────────────────────────────────────────────
 
 export function parseFDOPenaltyWinner(
-  score: { penalties: { home: number; away: number } | null },
-  homeTeam: string,
-  awayTeam: string
-): string | null {
+  score: { penalties: { home: number; away: number } | null }
+): 'home' | 'away' | null {
   if (!score.penalties) return null
-  return score.penalties.home > score.penalties.away ? homeTeam : awayTeam
+  return score.penalties.home > score.penalties.away ? 'home' : 'away'
 }
 
 async function fetchFromFDO(match: Match): Promise<MatchResult | null> {
@@ -123,12 +148,10 @@ async function fetchFromFDO(match: Match): Promise<MatchResult | null> {
   if (!res.ok) throw new Error(`football-data.org ${res.status}`)
 
   const data = await res.json()
-  const matches: unknown[] = data.matches ?? []
-
   const homeNorm = normalizeTeamName(match.home_team)
   const awayNorm = normalizeTeamName(match.away_team)
 
-  for (const m of matches as any[]) {
+  for (const m of (data.matches ?? []) as any[]) {
     if (m.status !== 'FINISHED') continue
     if (
       normalizeTeamName(m.homeTeam.name) !== homeNorm ||
@@ -138,9 +161,7 @@ async function fetchFromFDO(match: Match): Promise<MatchResult | null> {
     return {
       homeScore: m.score.fullTime.home as number,
       awayScore: m.score.fullTime.away as number,
-      penaltyWinner: match.is_knockout
-        ? parseFDOPenaltyWinner(m.score, match.home_team, match.away_team)
-        : null,
+      penaltyWinner: match.is_knockout ? parseFDOPenaltyWinner(m.score) : null,
     }
   }
 
