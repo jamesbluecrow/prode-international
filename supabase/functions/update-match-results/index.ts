@@ -41,7 +41,6 @@ function toDateKey(isoString: string): string {
   ].join("");
 }
 
-// Try multiple slugs — WC 2026 slug is unconfirmed
 const ESPN_SLUGS = ["fifa.world", "fifa.worldcup", "fifa.world2026"];
 
 type MatchResult = { homeScore: number; awayScore: number; penaltyWinner: string | null };
@@ -85,7 +84,7 @@ async function fetchFromESPN(match: MatchRow): Promise<MatchResult | null> {
         normalizeTeamName(awayComp.team.displayName) !== awayNorm
       ) continue;
 
-      if (!event.status?.type?.completed) return null; // still in progress
+      if (!event.status?.type?.completed) return null;
 
       return {
         homeScore: parseInt(homeComp.score, 10),
@@ -157,15 +156,28 @@ async function fetchMatchResult(match: MatchRow): Promise<MatchResult | null> {
 // ─── Main handler ─────────────────────────────────────────────────────────────
 
 export default {
-  fetch: withSupabase({ auth: ["secret"] }, async (_req, ctx) => {
-    // ctx.supabaseAdmin uses service role — bypasses RLS
+  fetch: withSupabase({ auth: ["secret"] }, async (req, ctx) => {
+    // Optional: scope to a single match (used by per-match scheduled jobs)
+    let matchId: string | null = null;
+    try {
+      const body = await req.json();
+      matchId = body.matchId ?? null;
+    } catch { /* empty body = process all pending */ }
+
+    // Only fetch matches that kicked off 90+ minutes ago and have no result
     const cutoff = new Date(Date.now() - 90 * 60 * 1000).toISOString();
 
-    const { data: pending, error } = await ctx.supabaseAdmin
+    let query = ctx.supabaseAdmin
       .from("matches")
       .select("id, home_team, away_team, kickoff_at, is_knockout, result_final")
       .eq("result_final", false)
       .lte("kickoff_at", cutoff);
+
+    if (matchId) {
+      query = query.eq("id", matchId) as typeof query;
+    }
+
+    const { data: pending, error } = await query;
 
     if (error) {
       console.error("Query failed:", error.message);
@@ -185,7 +197,7 @@ export default {
 
       if (!result) {
         skipped++;
-        errors.push(`No result: ${match.home_team} vs ${match.away_team}`);
+        errors.push(`No result yet: ${match.home_team} vs ${match.away_team}`);
         continue;
       }
 
@@ -199,7 +211,7 @@ export default {
           ...(result.penaltyWinner !== null ? { penalty_winner: result.penaltyWinner } : {}),
         })
         .eq("id", match.id)
-        .eq("result_final", false); // guard against concurrent writes
+        .eq("result_final", false);
 
       if (updateError) {
         errors.push(`Update failed for ${match.home_team} vs ${match.away_team}: ${updateError.message}`);
