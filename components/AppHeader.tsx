@@ -28,7 +28,7 @@ export function AppHeader({ user }: { user: User }) {
     <header className="sticky top-0 z-50 bg-[var(--surface)] border-b border-[var(--border)]">
       <div className="max-w-2xl mx-auto px-4 flex items-center gap-4 h-14">
         <Link href="/" className="font-display text-xl text-[var(--gold)] mr-auto">
-          PRODE <span className="text-[var(--muted)]">INT'L</span>
+          SUPER <span className="text-[var(--muted)]">PRODE</span>
         </Link>
         <nav className="hidden sm:flex items-center gap-1">
           {NAV.map(({ href, label }) => (

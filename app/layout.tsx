@@ -13,7 +13,7 @@ const saira = Saira_Condensed({
 })
 
 export const metadata: Metadata = {
-  title: 'Prode Internacional · World Cup 2026',
+  title: 'Super Prode Internacional · World Cup 2026',
   description: 'World Cup 2026 prediction pool',
   manifest: '/manifest.json',
 }
@@ -28,7 +28,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         {user && <AppHeader user={user} />}
         <main className="max-w-2xl mx-auto px-4 pb-24">{children}</main>
         <footer className="text-center py-8 text-[var(--muted)] text-xs">
-          <span className="font-display text-[var(--gold)]">PRODE INTERNATIONAL</span>
+          <span className="font-display text-[var(--gold)]">SUPER PRODE INTERNATIONAL</span>
           <span className="ml-1 px-1.5 py-0.5 border border-[var(--border)] rounded text-[10px]">2026</span>
           <p className="mt-1">Not a betting site</p>
         </footer>
