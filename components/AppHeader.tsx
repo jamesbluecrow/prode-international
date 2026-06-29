@@ -10,6 +10,7 @@ const NAV = [
   { href: '/ranking', label: 'Ranking' },
   { href: '/groups', label: 'Groups' },
   { href: '/champion', label: 'Champion' },
+  { href: '/news', label: 'News' },
   { href: '/rules', label: 'Rules' },
 ]
 

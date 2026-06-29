@@ -7,12 +7,13 @@ export default async function AdminPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const [{ data: matches }, { data: deadlines }, { data: champion }, { data: profiles }] =
+  const [{ data: matches }, { data: deadlines }, { data: champion }, { data: profiles }, { data: newsItems }] =
     await Promise.all([
       supabase.from('matches').select('*').order('kickoff_at'),
       supabase.from('phase_deadlines').select('*'),
       supabase.from('tournament_bonuses').select('*').eq('key', 'champion').single(),
       supabase.from('profiles').select('*').order('display_name'),
+      supabase.from('news_items').select('*').order('sort_order').order('created_at', { ascending: false }),
     ])
 
   return (
@@ -25,6 +26,7 @@ export default async function AdminPage() {
         deadlines={deadlines ?? []}
         champion={champion}
         profiles={profiles ?? []}
+        newsItems={newsItems ?? []}
         currentUserId={user.id}
       />
     </div>

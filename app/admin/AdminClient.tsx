@@ -1,23 +1,27 @@
 'use client'
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Match, PhaseDeadline, TournamentBonus, Profile } from '@/lib/types'
+
+type NewsItem = { id: string; image_url: string; caption: string | null; sort_order: number; created_at: string }
 
 interface Props {
   matches: Match[]
   deadlines: PhaseDeadline[]
   champion: TournamentBonus | null
   profiles: Profile[]
+  newsItems: NewsItem[]
   currentUserId: string
 }
 
-type Tab = 'results' | 'locks' | 'deadlines' | 'champion' | 'admins'
+type Tab = 'results' | 'locks' | 'deadlines' | 'champion' | 'news' | 'admins'
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'results', label: 'Results' },
   { key: 'locks', label: 'Locks' },
   { key: 'deadlines', label: 'Deadlines' },
   { key: 'champion', label: 'Champion' },
+  { key: 'news', label: 'News' },
   { key: 'admins', label: 'Admins' },
 ]
 
@@ -26,15 +30,52 @@ export function AdminClient({
   deadlines: initDeadlines,
   champion: initChampion,
   profiles: initProfiles,
+  newsItems: initNews,
   currentUserId,
 }: Props) {
   const [matches, setMatches] = useState(initMatches)
   const [deadlines, setDeadlines] = useState(initDeadlines)
   const [champion, setChampion] = useState(initChampion)
   const [profiles, setProfiles] = useState(initProfiles)
+  const [newsItems, setNewsItems] = useState<NewsItem[]>(initNews)
   const [tab, setTab] = useState<Tab>('results')
   const [saving, setSaving] = useState<string | null>(null)
+  const [caption, setCaption] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState('')
+  const fileRef = useRef<HTMLInputElement>(null)
   const supabase = createClient()
+
+  async function uploadNews(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    setUploadError('')
+    const ext = file.name.split('.').pop()
+    const path = `${Date.now()}.${ext}`
+    const { data: uploaded, error: upErr } = await supabase.storage.from('news').upload(path, file, { contentType: file.type })
+    if (upErr || !uploaded) { setUploadError(upErr?.message ?? 'Upload failed'); setUploading(false); return }
+    const { data: { publicUrl } } = supabase.storage.from('news').getPublicUrl(uploaded.path)
+    const { data: inserted, error: insErr } = await supabase
+      .from('news_items')
+      .insert({ image_url: publicUrl, caption: caption.trim() || null, sort_order: newsItems.length })
+      .select()
+      .single()
+    if (insErr || !inserted) { setUploadError(insErr?.message ?? 'Insert failed'); setUploading(false); return }
+    setNewsItems(n => [inserted as NewsItem, ...n])
+    setCaption('')
+    if (fileRef.current) fileRef.current.value = ''
+    setUploading(false)
+  }
+
+  async function deleteNews(item: NewsItem) {
+    setSaving(item.id)
+    const storagePath = item.image_url.split('/news/')[1]
+    if (storagePath) await supabase.storage.from('news').remove([storagePath])
+    await supabase.from('news_items').delete().eq('id', item.id)
+    setNewsItems(n => n.filter(x => x.id !== item.id))
+    setSaving(null)
+  }
 
   async function updateMatch(id: string, updates: Partial<Match>) {
     setSaving(id)
@@ -252,6 +293,51 @@ export function AdminClient({
           {saving === 'champion' && (
             <span className="text-xs text-[var(--muted)]">Saving…</span>
           )}
+        </div>
+      )}
+
+      {tab === 'news' && (
+        <div className="space-y-4">
+          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4 space-y-3">
+            <p className="text-sm font-medium text-[var(--text)]">Upload image</p>
+            <input
+              type="text"
+              value={caption}
+              onChange={e => setCaption(e.target.value)}
+              placeholder="Caption (optional)"
+              className="w-full bg-[var(--surface-2)] border border-[var(--border)] rounded px-3 py-2 text-sm text-[var(--text)] placeholder-[var(--muted)]"
+            />
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              onChange={uploadNews}
+              disabled={uploading}
+              className="text-sm text-[var(--muted)] file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:bg-[var(--gold)] file:text-[var(--bg)] disabled:opacity-50"
+            />
+            {uploading && <p className="text-xs text-[var(--muted)]">Uploading…</p>}
+            {uploadError && <p className="text-xs text-[var(--red)]">{uploadError}</p>}
+          </div>
+          <div className="space-y-3">
+            {newsItems.length === 0 && (
+              <p className="text-sm text-[var(--muted)] text-center py-4">No images yet.</p>
+            )}
+            {newsItems.map(item => (
+              <div key={item.id} className="bg-[var(--surface)] border border-[var(--border)] rounded-xl overflow-hidden">
+                <img src={item.image_url} alt={item.caption ?? ''} className="w-full h-auto max-h-48 object-cover" />
+                <div className="px-4 py-2 flex items-center gap-3">
+                  <p className="flex-1 text-xs text-[var(--muted)] truncate">{item.caption ?? '—'}</p>
+                  <button
+                    onClick={() => deleteNews(item)}
+                    disabled={saving === item.id}
+                    className="text-xs text-[var(--red)] hover:underline disabled:opacity-50"
+                  >
+                    {saving === item.id ? '…' : 'Delete'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

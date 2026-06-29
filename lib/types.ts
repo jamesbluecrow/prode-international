@@ -39,6 +39,12 @@ export type Database = {
         Update: { away_code?: string | null; away_score?: number | null; away_team?: string; created_at?: string; force_open?: boolean; home_code?: string | null; home_score?: number | null; home_team?: string; id?: string; is_knockout?: boolean; kickoff_at?: string; match_no?: number | null; penalty_winner?: string | null; predictions_locked?: boolean; result_final?: boolean; stage?: string }
         Relationships: []
       }
+      news_items: {
+        Row: { id: string; image_url: string; caption: string | null; sort_order: number; created_at: string }
+        Insert: { id?: string; image_url: string; caption?: string | null; sort_order?: number; created_at?: string }
+        Update: { id?: string; image_url?: string; caption?: string | null; sort_order?: number; created_at?: string }
+        Relationships: []
+      }
       phase_deadlines: {
         Row: { lock_at: string; stage: string }
         Insert: { lock_at: string; stage: string }
