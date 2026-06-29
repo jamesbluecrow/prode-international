@@ -8,8 +8,13 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get('code')
   const next = searchParams.get('next') ?? '/'
 
+  const response = NextResponse.redirect(`${origin}${next}`)
+
   if (code) {
     const cookieStore = await cookies()
+    // Collect cookies so we can set them on the redirect response directly.
+    // Using cookieStore.set() alone doesn't attach cookies to a NextResponse.redirect().
+    const pendingCookies: Array<{ name: string; value: string; options: Record<string, unknown> }> = []
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -17,14 +22,17 @@ export async function GET(request: NextRequest) {
         cookies: {
           getAll() { return cookieStore.getAll() },
           setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options))
+            pendingCookies.push(...cookiesToSet)
           },
         },
       }
     )
-    await supabase.auth.exchangeCodeForSession(code)
+    const { error } = await supabase.auth.exchangeCodeForSession(code)
+    if (!error) {
+      pendingCookies.forEach(({ name, value, options }) =>
+        response.cookies.set(name, value, options))
+    }
   }
 
-  return NextResponse.redirect(`${origin}${next}`)
+  return response
 }
