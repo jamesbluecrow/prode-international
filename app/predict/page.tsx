@@ -23,6 +23,8 @@ export default async function PredictPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
+  const now = new Date().toISOString()
+
   const [{ data: matches }, { data: predictions }, { data: scores }, { data: bonuses }, { data: bonusPicks }] = await Promise.all([
     supabase.from('matches').select('*').order('kickoff_at'),
     supabase.from('predictions').select('*').eq('user_id', user.id),
@@ -43,8 +45,6 @@ export default async function PredictPage() {
     if (!byStage.has(m.stage)) byStage.set(m.stage, [])
     byStage.get(m.stage)!.push(m)
   }
-
-  const now = new Date().toISOString()
 
   function isOpen(match: Match): boolean {
     if (match.force_open) return true
