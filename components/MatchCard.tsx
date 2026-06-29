@@ -21,6 +21,17 @@ function pointsColor(pts: number | null): string {
   return 'text-[var(--muted)]'
 }
 
+function pointsLabel(pts: number | null): string {
+  if (pts == null) return ''
+  if (pts === 10) return 'Exact score 🎯'
+  if (pts >= 13) return 'Exact + penalty bonus 🎯'
+  if (pts === 8) return 'Draw + penalty bonus'
+  if (pts === 7) return 'Right margin'
+  if (pts === 5) return 'Right result'
+  if (pts >= 3) return 'Right advancer'
+  return 'No points'
+}
+
 export function MatchCard({ match, prediction: initialPred, score, isOpen, userId }: Props) {
   const [home, setHome] = useState(initialPred?.pred_home ?? 0)
   const [away, setAway] = useState(initialPred?.pred_away ?? 0)
@@ -144,9 +155,15 @@ export function MatchCard({ match, prediction: initialPred, score, isOpen, userI
                   {viaPens && <span className="ml-1 text-xs text-[var(--muted)]">(pens)</span>}
                 </span>
                 {pts != null && (
-                  <span className={`font-bold tabular-nums text-base ${pointsColor(pts)}`}>
-                    {pts > 0 ? `+${pts}` : '0'} pts
-                  </span>
+                  <div className="flex flex-col items-end gap-0.5">
+                    <span className={`font-display text-xl tabular-nums leading-none ${pointsColor(pts)}`}>
+                      {pts > 0 ? `+${pts}` : '0'}
+                      <span className="text-xs font-sans ml-0.5">pts</span>
+                    </span>
+                    <span className={`text-[10px] uppercase tracking-wide ${pointsColor(pts)}`}>
+                      {pointsLabel(pts)}
+                    </span>
+                  </div>
                 )}
               </div>
               {winnerName ? (
