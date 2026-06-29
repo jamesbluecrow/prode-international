@@ -4,9 +4,68 @@
 
 **Goal:** Create a Vercel Cron Job that fires at the 30-minute and 90-minute marks after each World Cup match is expected to finish, detects matches missing results in the database, fetches scores from ESPN's public soccer API (no API key required), and writes `home_score`, `away_score`, `result_final`, `predictions_locked`, and `penalty_winner` back to Supabase.
 
-**Architecture:** A Next.js App Router route handler at `GET /api/cron/update-results` is secured with a shared `CRON_SECRET` bearer token. Vercel's cron scheduler calls it on a fixed schedule targeting the 30-min and 90-min windows after typical World Cup kickoff end times. The handler delegates to `lib/updateMatchResults.ts`, which (1) queries Supabase for matches where `result_final = false` AND `kickoff_at ≤ now − 90 min`, (2) groups them by UTC date, (3) calls ESPN's unofficial soccer scoreboard API for each date, (4) matches ESPN events to DB rows by normalising team names, and (5) writes results back via the service-role Supabase client. The job is fully idempotent — re-running on an already-updated match is a no-op.
+**Architecture:** A Next.js App Router route handler at `GET /api/cron/update-results` is secured with a shared `CRON_SECRET` bearer token. Vercel's cron scheduler calls it on a fixed schedule targeting the 30-min and 90-min windows after typical World Cup kickoff end times. The handler delegates to `lib/updateMatchResults.ts`, which (1) queries Supabase for matches where `result_final = false` AND `kickoff_at ≤ now − 90 min`, (2) groups them by UTC date, (3) fetches match results from the data source (ESPN first, football-data.org as fallback), (4) matches events to DB rows by normalising team names, and (5) writes results back via the service-role Supabase client. The job is fully idempotent — re-running on an already-updated match is a no-op.
 
-**Tech Stack:** Next.js 16.2.9 App Router (route.ts), Vercel Cron (`vercel.json`), `@supabase/supabase-js` v2 with service role key, ESPN unofficial soccer API (no key required), Vitest for unit tests.
+**Tech Stack:** Next.js 16.2.9 App Router (route.ts), Vercel Cron (`vercel.json`), `@supabase/supabase-js` v2 with service role key, ESPN unofficial soccer API (primary, no key required), football-data.org API (fallback, free API key required), Vitest for unit tests.
+
+## Data Sources
+
+Two APIs are tried in order. The first one that returns data for a match wins.
+
+### Primary: ESPN (unofficial, no key required)
+```
+https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates=YYYYMMDD&limit=50
+```
+Returns all matches for a given date. No API key needed. Response shape:
+```json
+{
+  "events": [{
+    "status": { "type": { "completed": true } },
+    "competitions": [{
+      "competitors": [
+        { "homeAway": "home", "team": { "displayName": "Spain" }, "score": "2" },
+        { "homeAway": "away", "team": { "displayName": "France" }, "score": "1" }
+      ],
+      "notes": [{ "text": "Spain won on penalties" }]
+    }]
+  }]
+}
+```
+> The slug `fifa.world` is unconfirmed for WC 2026. Alternative slugs to try if it returns empty: `fifa.worldcup`, `fifa.world2026`. See Troubleshooting.
+
+### Fallback: football-data.org (free tier, API key required)
+Docs: https://www.football-data.org/documentation/quickstart
+
+Free tier: 10 requests/minute, 100 requests/day — sufficient for this cron (at most a few calls per run).
+
+Register for a free API key at https://www.football-data.org/ and set the env var `FOOTBALL_DATA_API_KEY`.
+
+Relevant endpoints:
+```
+# All finished WC 2026 matches
+GET https://api.football-data.org/v4/competitions/WC/matches?status=FINISHED
+Header: X-Auth-Token: {FOOTBALL_DATA_API_KEY}
+
+# Matches for a specific date range
+GET https://api.football-data.org/v4/competitions/WC/matches?dateFrom=2026-10-14&dateTo=2026-10-14&status=FINISHED
+Header: X-Auth-Token: {FOOTBALL_DATA_API_KEY}
+```
+Response shape:
+```json
+{
+  "matches": [{
+    "status": "FINISHED",
+    "utcDate": "2026-10-14T18:00:00Z",
+    "homeTeam": { "name": "Spain", "shortName": "Spain", "tla": "ESP" },
+    "awayTeam": { "name": "France", "shortName": "France", "tla": "FRA" },
+    "score": {
+      "fullTime": { "home": 2, "away": 1 },
+      "penalties": { "home": 4, "away": 3 }
+    }
+  }]
+}
+```
+The `score.penalties` field is non-null when the match went to penalties; the team with the higher penalty score is the winner.
 
 ## Global Constraints
 
@@ -17,7 +76,8 @@
 - Vercel **Pro plan** required for `*/30 * * * *` cron frequency. Hobby plan supports at most once per day. See the fallback schedule note in Task 1.
 - No changes to existing RLS policies — the service-role key bypasses RLS, which is correct for a cron updating match data.
 - The `.eq('result_final', false)` guard in the UPDATE call prevents overwriting a result that was set by another concurrent run.
-- Team names in the DB (`home_team`, `away_team`) may differ slightly from ESPN `displayName`. Use the `normalizeTeamName` function defined below as the single source of truth for matching.
+- Team names in the DB (`home_team`, `away_team`) may differ slightly from ESPN or football-data.org names. Use the `normalizeTeamName` function defined below as the single source of truth for matching.
+- `FOOTBALL_DATA_API_KEY` is only needed if ESPN fails. Set it in `.env.local` and the Vercel dashboard if you want the fallback enabled. The cron still works without it (ESPN-only mode).
 
 ---
 
@@ -656,9 +716,10 @@ Run `npm test` to ensure no regressions, then commit.
 
 **Cron fires but `updated` is always 0 on days with finished matches:**
 Check `errors` in the response. Common causes:
-1. ESPN slug wrong — see the smoke-test note above.
-2. Team name mismatch — add to `OVERRIDES`.
+1. ESPN slug wrong — see the smoke-test note above. Try the football-data.org fallback instead.
+2. Team name mismatch — add to `OVERRIDES` in `lib/updateMatchResults.ts`.
 3. `kickoff_at` in DB is in the future (wrong timezone) — verify stored value in Supabase SQL editor.
+4. football-data.org fallback not activated — set `FOOTBALL_DATA_API_KEY` in Vercel env vars.
 
 **Vercel cron not firing on Hobby plan:**
 Change `vercel.json` schedule to `0 5 * * *` (daily at 5:00 AM UTC). All results from the previous day will be captured in one run.
