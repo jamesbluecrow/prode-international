@@ -10,6 +10,7 @@ const NAV = [
   { href: '/ranking', label: 'Ranking' },
   { href: '/groups', label: 'Groups' },
   { href: '/champion', label: 'Champion' },
+  { href: '/rules', label: 'Rules' },
 ]
 
 export function AppHeader({ user }: { user: User }) {

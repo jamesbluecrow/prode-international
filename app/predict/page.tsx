@@ -1,7 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import { MatchCard } from '@/components/MatchCard'
 import { PhaseSection } from '@/components/PhaseSection'
+import { TEAM_CODES } from '@/lib/teamCodes'
 import type { Match, Prediction, PredictionScore } from '@/lib/types'
 
 const STAGE_LABELS: Record<string, string> = {
@@ -21,11 +23,17 @@ export default async function PredictPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const [{ data: matches }, { data: predictions }, { data: scores }] = await Promise.all([
+  const [{ data: matches }, { data: predictions }, { data: scores }, { data: bonuses }, { data: bonusPicks }] = await Promise.all([
     supabase.from('matches').select('*').order('kickoff_at'),
     supabase.from('predictions').select('*').eq('user_id', user.id),
     supabase.from('prediction_scores').select('*').eq('user_id', user.id),
+    supabase.from('tournament_bonuses').select('*').eq('key', 'champion').single(),
+    supabase.from('bonus_predictions').select('*').eq('user_id', user.id),
   ])
+
+  const championBonus = bonuses ?? null
+  const championPick = (bonusPicks ?? []).find(b => b.bonus_id === championBonus?.id)?.answer ?? null
+  const championLocked = !!(championBonus?.locked || (championBonus?.lock_at && now >= championBonus.lock_at))
 
   const predMap = new Map((predictions ?? []).map(p => [p.match_id, p]))
   const scoreMap = new Map((scores ?? []).map(s => [s.match_id, s]))
@@ -54,6 +62,40 @@ export default async function PredictPage() {
         <span className="text-[var(--muted)]">MY</span>{' '}
         <span className="text-[var(--gold)]">PREDICTIONS</span>
       </h1>
+
+      {/* Champion pick banner */}
+      {championBonus && (
+        championPick ? (
+          <Link href="/champion" className="flex items-center gap-3 bg-[var(--surface)] border border-[var(--gold)]/30 rounded-xl px-4 py-3 hover:border-[var(--gold)]/60 transition-colors">
+            <div className="flex-shrink-0">
+              {TEAM_CODES[championPick] && (
+                <img
+                  src={`https://flagcdn.com/w40/${TEAM_CODES[championPick]}.png`}
+                  alt={championPick}
+                  className="w-10 h-7 object-cover rounded-sm"
+                />
+              )}
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] uppercase tracking-widest text-[var(--muted)]">Champion Pick</p>
+              <p className="font-bold text-[var(--gold)] truncate">{championPick}</p>
+            </div>
+            <span className="ml-auto text-[10px] uppercase tracking-widest text-[var(--green)] flex-shrink-0">
+              {championLocked ? '🔒 Locked' : '✓ Saved'}
+            </span>
+          </Link>
+        ) : (
+          !championLocked && (
+            <Link href="/champion" className="flex items-center justify-between bg-[var(--surface)] border border-[var(--border)] rounded-xl px-4 py-3 hover:border-[var(--gold)]/40 transition-colors group">
+              <div>
+                <p className="text-[10px] uppercase tracking-widest text-[var(--muted)]">Champion Pick</p>
+                <p className="text-sm text-[var(--text)] group-hover:text-[var(--gold)] transition-colors">Pick your World Cup winner →</p>
+              </div>
+              <span className="text-2xl">🏆</span>
+            </Link>
+          )
+        )
+      )}
 
       {STAGE_ORDER.filter(s => byStage.has(s)).map(stage => {
         const stageMatches = byStage.get(stage)!
