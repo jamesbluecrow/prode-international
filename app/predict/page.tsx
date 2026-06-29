@@ -100,7 +100,9 @@ export default async function PredictPage() {
       {STAGE_ORDER.filter(s => byStage.has(s)).map(stage => {
         const stageMatches = byStage.get(stage)!
         const completedCount = stageMatches.filter(m => m.kickoff_at <= now).length
-        const defaultOpen = completedCount < stageMatches.length
+        const allFinal = stageMatches.every(m => m.result_final)
+        const anyStarted = completedCount > 0
+        const defaultOpen = anyStarted && !allFinal
         return (
           <PhaseSection
             key={stage}
