@@ -40,6 +40,8 @@ export function AdminClient({
   const [newsItems, setNewsItems] = useState<NewsItem[]>(initNews)
   const [tab, setTab] = useState<Tab>('results')
   const [saving, setSaving] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+  const [refreshResult, setRefreshResult] = useState<{ updated: number; skipped: number; errors: string[] } | null>(null)
   const [caption, setCaption] = useState('')
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState('')
@@ -99,6 +101,20 @@ export function AdminClient({
     setSaving(null)
   }
 
+  async function refreshResults() {
+    setRefreshing(true)
+    setRefreshResult(null)
+    const res = await fetch('/api/admin/refresh-results', { method: 'POST' })
+    const data = await res.json()
+    setRefreshResult(data)
+    if (data.updated > 0) {
+      // Reload matches from DB so the results tab reflects the updates
+      const { data: fresh } = await supabase.from('matches').select('*').order('kickoff_at')
+      if (fresh) setMatches(fresh as Match[])
+    }
+    setRefreshing(false)
+  }
+
   async function toggleAdmin(userId: string, isAdmin: boolean) {
     setSaving(userId)
     await supabase.from('profiles').update({ is_admin: isAdmin }).eq('id', userId)
@@ -126,6 +142,28 @@ export function AdminClient({
 
       {tab === 'results' && (
         <div className="space-y-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <button
+              onClick={refreshResults}
+              disabled={refreshing}
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-[var(--green)]/20 text-[var(--green)] border border-[var(--green)]/30 hover:bg-[var(--green)]/30 disabled:opacity-50 transition-colors"
+            >
+              {refreshing ? 'Fetching results…' : 'Refresh Results from Web'}
+            </button>
+            {refreshResult && (
+              <span className="text-xs text-[var(--muted)]">
+                {refreshResult.updated} updated · {refreshResult.skipped} skipped
+                {refreshResult.errors.length > 0 && ` · ${refreshResult.errors.length} errors`}
+              </span>
+            )}
+          </div>
+          {refreshResult?.errors.length ? (
+            <div className="bg-[var(--surface)] border border-[var(--red)]/30 rounded-xl p-3 space-y-1">
+              {refreshResult.errors.map((e, i) => (
+                <p key={i} className="text-xs text-[var(--red)]">{e}</p>
+              ))}
+            </div>
+          ) : null}
           {matches.map(m => (
             <div key={m.id} className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4">
               <p className="font-medium text-sm mb-3 text-[var(--text)]">
