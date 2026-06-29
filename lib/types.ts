@@ -66,12 +66,12 @@ export type Database = {
     }
     Views: {
       bonus_scores: { Row: { bonus_id: string | null; points: number | null; user_id: string | null }; Relationships: [] }
-      leaderboard: { Row: { display_name: string | null; exact_hits: number | null; total_points: number | null; user_id: string | null }; Relationships: [] }
+      leaderboard: { Row: { display_name: string | null; exact_hits: number | null; partial_hits: number | null; total_points: number | null; user_id: string | null }; Relationships: [] }
       prediction_scores: { Row: { away_score: number | null; home_score: number | null; id: string | null; is_knockout: boolean | null; match_id: string | null; penalty_winner: string | null; points: number | null; pred_advancer: string | null; pred_away: number | null; pred_home: number | null; result_final: boolean | null; stage: string | null; user_id: string | null }; Relationships: [] }
     }
     Functions: {
       create_group: { Args: { p_name: string; p_region?: string }; Returns: Database['public']['Tables']['groups']['Row'] }
-      group_leaderboard: { Args: { p_group: string }; Returns: { display_name: string; exact_hits: number; total_points: number; user_id: string }[] }
+      group_leaderboard: { Args: { p_group: string }; Returns: { display_name: string; exact_hits: number; partial_hits: number; total_points: number; user_id: string }[] }
       is_admin: { Args: Record<never, never>; Returns: boolean }
       join_group: { Args: { p_code: string }; Returns: Database['public']['Tables']['groups']['Row'] }
       match_open: { Args: { p_match_id: string }; Returns: boolean }

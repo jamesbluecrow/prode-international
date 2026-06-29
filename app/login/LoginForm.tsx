@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 type Mode = 'signin' | 'signup' | 'magic' | 'reset'
 
@@ -18,6 +18,8 @@ export function LoginForm() {
   const [info, setInfo] = useState('')
   const supabase = createClient()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const nextUrl = searchParams.get('next') ?? '/'
 
   function reset(next: Mode) {
     setMode(next)
@@ -33,7 +35,7 @@ export function LoginForm() {
     const { error: err } = await supabase.auth.signInWithPassword({ email, password })
     setLoading(false)
     if (err) { setError(err.message); return }
-    router.push('/')
+    router.push(nextUrl)
     router.refresh()
   }
 
