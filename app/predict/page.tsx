@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { MatchCard } from '@/components/MatchCard'
+import { PhaseSection } from '@/components/PhaseSection'
 import type { Match, Prediction, PredictionScore } from '@/lib/types'
 
 const STAGE_LABELS: Record<string, string> = {
@@ -54,13 +55,19 @@ export default async function PredictPage() {
         <span className="text-[var(--gold)]">PREDICTIONS</span>
       </h1>
 
-      {STAGE_ORDER.filter(s => byStage.has(s)).map(stage => (
-        <section key={stage}>
-          <h2 className="font-display text-xl text-[var(--text)] mb-3 pb-2 border-b border-[var(--border)]">
-            {STAGE_LABELS[stage] ?? stage}
-          </h2>
-          <div className="space-y-3">
-            {byStage.get(stage)!.map(match => (
+      {STAGE_ORDER.filter(s => byStage.has(s)).map(stage => {
+        const stageMatches = byStage.get(stage)!
+        const completedCount = stageMatches.filter(m => m.kickoff_at <= now).length
+        const defaultOpen = completedCount < stageMatches.length
+        return (
+          <PhaseSection
+            key={stage}
+            label={STAGE_LABELS[stage] ?? stage}
+            matchCount={stageMatches.length}
+            completedCount={completedCount}
+            defaultOpen={defaultOpen}
+          >
+            {stageMatches.map(match => (
               <MatchCard
                 key={match.id}
                 match={match}
@@ -70,9 +77,9 @@ export default async function PredictPage() {
                 userId={user.id}
               />
             ))}
-          </div>
-        </section>
-      ))}
+          </PhaseSection>
+        )
+      })}
 
       {(matches ?? []).length === 0 && (
         <p className="text-[var(--muted)] text-center py-12">
