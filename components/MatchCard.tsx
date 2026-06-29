@@ -122,24 +122,52 @@ export function MatchCard({ match, prediction: initialPred, score, isOpen, userI
         )}
 
         {/* Result display */}
-        {match.home_score != null && match.away_score != null && (
-          <div className="mt-3 flex items-center justify-between text-sm border-t border-[var(--border)] pt-3">
-            <span className="text-[var(--muted)]">
-              Result:{' '}
-              <strong className="text-[var(--text)]">
-                {match.home_score} – {match.away_score}
-              </strong>
-              {match.penalty_winner && (
-                <span className="ml-1 text-xs">(pen.)</span>
+        {match.home_score != null && match.away_score != null && (() => {
+          const hg = match.home_score
+          const ag = match.away_score
+          const isDraw = hg === ag
+          const winnerSide = isDraw
+            ? (match.penalty_winner ?? null)
+            : hg > ag ? 'home' : 'away'
+          const winnerName = winnerSide === 'home' ? match.home_team : winnerSide === 'away' ? match.away_team : null
+          const winnerCode = winnerSide === 'home' ? match.home_code : winnerSide === 'away' ? match.away_code : null
+          const viaPens = isDraw && !!match.penalty_winner
+
+          return (
+            <div className="mt-3 border-t border-[var(--border)] pt-3 space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-[var(--muted)]">
+                  Result:{' '}
+                  <strong className="text-[var(--text)] tabular-nums">
+                    {hg} – {ag}
+                  </strong>
+                  {viaPens && <span className="ml-1 text-xs text-[var(--muted)]">(pens)</span>}
+                </span>
+                {pts != null && (
+                  <span className={`font-bold tabular-nums text-base ${pointsColor(pts)}`}>
+                    {pts > 0 ? `+${pts}` : '0'} pts
+                  </span>
+                )}
+              </div>
+              {winnerName ? (
+                <div className="flex items-center gap-2">
+                  {winnerCode && (
+                    <img
+                      src={`https://flagcdn.com/w40/${winnerCode.toLowerCase()}.png`}
+                      alt={winnerName}
+                      className="w-6 h-4 object-cover rounded-sm flex-shrink-0"
+                    />
+                  )}
+                  <span className="text-sm font-semibold text-[var(--text)]">
+                    {winnerName} {viaPens ? 'advances' : 'won'} 🎉
+                  </span>
+                </div>
+              ) : (
+                <span className="text-sm text-[var(--muted)]">Draw</span>
               )}
-            </span>
-            {pts != null && (
-              <span className={`font-bold tabular text-base ${pointsColor(pts)}`}>
-                {pts > 0 ? `+${pts}` : '0'} pts
-              </span>
-            )}
-          </div>
-        )}
+            </div>
+          )
+        })()}
 
         {canEdit && (
           <button
