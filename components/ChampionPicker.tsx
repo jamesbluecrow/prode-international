@@ -3,33 +3,24 @@ import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { TournamentBonus } from '@/lib/types'
 
+const TEAM_CODES: Record<string, string> = {
+  'Algeria': 'dz', 'Argentina': 'ar', 'Australia': 'au', 'Austria': 'at',
+  'Belgium': 'be', 'Bosnia and Herzegovina': 'ba', 'Brazil': 'br',
+  'Canada': 'ca', 'Cape Verde': 'cv', 'Colombia': 'co', 'Croatia': 'hr',
+  'Curaçao': 'cw', 'Czech Republic': 'cz', 'DR Congo': 'cd',
+  'Ecuador': 'ec', 'Egypt': 'eg', 'England': 'gb-eng',
+  'France': 'fr', 'Germany': 'de', 'Ghana': 'gh', 'Haiti': 'ht',
+  'Iran': 'ir', 'Iraq': 'iq', 'Ivory Coast': 'ci', 'Japan': 'jp',
+  'Jordan': 'jo', 'Mexico': 'mx', 'Morocco': 'ma', 'Netherlands': 'nl',
+  'New Zealand': 'nz', 'Norway': 'no', 'Panama': 'pa', 'Paraguay': 'py',
+  'Portugal': 'pt', 'Qatar': 'qa', 'Saudi Arabia': 'sa', 'Scotland': 'gb-sct',
+  'Senegal': 'sn', 'South Africa': 'za', 'South Korea': 'kr', 'Spain': 'es',
+  'Sweden': 'se', 'Switzerland': 'ch', 'Tunisia': 'tn', 'Turkey': 'tr',
+  'United States': 'us', 'Uruguay': 'uy', 'Uzbekistan': 'uz',
+}
+
 // All 48 qualified teams for the 2026 FIFA World Cup
-const TEAMS = [
-  // Group A
-  'Mexico', 'South Africa', 'South Korea', 'Czech Republic',
-  // Group B
-  'Canada', 'Bosnia and Herzegovina', 'Qatar', 'Switzerland',
-  // Group C
-  'Brazil', 'Morocco', 'Haiti', 'Scotland',
-  // Group D
-  'United States', 'Paraguay', 'Australia', 'Turkey',
-  // Group E
-  'Germany', 'Curaçao', 'Ivory Coast', 'Ecuador',
-  // Group F
-  'Netherlands', 'Japan', 'Sweden', 'Tunisia',
-  // Group G
-  'Belgium', 'Egypt', 'Iran', 'New Zealand',
-  // Group H
-  'Spain', 'Cape Verde', 'Saudi Arabia', 'Uruguay',
-  // Group I
-  'France', 'Senegal', 'Iraq', 'Norway',
-  // Group J
-  'Argentina', 'Algeria', 'Austria', 'Jordan',
-  // Group K
-  'Portugal', 'DR Congo', 'Uzbekistan', 'Colombia',
-  // Group L
-  'England', 'Croatia', 'Ghana', 'Panama',
-].sort()
+const TEAMS = Object.keys(TEAM_CODES).sort()
 
 interface Props {
   bonus: TournamentBonus
@@ -67,9 +58,18 @@ export function ChampionPicker({ bonus, currentAnswer, userId, isLocked: globalL
           {globalLocked ? '🔒 Locked' : '✓ Saved'}
         </p>
         {answer ? (
-          <p className="text-[var(--text)]">
-            Your pick: <strong className="text-[var(--gold)] text-lg">{answer}</strong>
-          </p>
+          <div className="flex items-center justify-center gap-3">
+            {TEAM_CODES[answer] && (
+              <img
+                src={`https://flagcdn.com/w40/${TEAM_CODES[answer]}.png`}
+                alt={answer}
+                className="w-10 h-7 object-cover rounded-sm"
+              />
+            )}
+            <p className="text-[var(--text)]">
+              Your pick: <strong className="text-[var(--gold)] text-lg">{answer}</strong>
+            </p>
+          </div>
         ) : (
           <p className="text-[var(--muted)] text-sm">No champion selected.</p>
         )}
@@ -81,8 +81,17 @@ export function ChampionPicker({ bonus, currentAnswer, userId, isLocked: globalL
     <div className="space-y-4">
       {answer && (
         <div className="bg-[var(--surface)] border border-[var(--green)]/30 rounded-xl p-4 text-center">
-          <p className="text-xs text-[var(--muted)] uppercase tracking-widest mb-1">Your current pick</p>
-          <p className="text-lg font-bold text-[var(--green)]">{answer}</p>
+          <p className="text-xs text-[var(--muted)] uppercase tracking-widest mb-2">Your current pick</p>
+          <div className="flex items-center justify-center gap-2">
+            {TEAM_CODES[answer] && (
+              <img
+                src={`https://flagcdn.com/w40/${TEAM_CODES[answer]}.png`}
+                alt={answer}
+                className="w-8 h-6 object-cover rounded-sm"
+              />
+            )}
+            <p className="text-lg font-bold text-[var(--green)]">{answer}</p>
+          </div>
         </div>
       )}
       <input
@@ -101,13 +110,20 @@ export function ChampionPicker({ bonus, currentAnswer, userId, isLocked: globalL
             key={team}
             onClick={() => save(team)}
             disabled={saving}
-            className={`w-full text-left px-4 py-3 rounded-lg border transition-all ${
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg border transition-all ${
               answer === team
                 ? 'border-[var(--green)] bg-[var(--green)]/10 text-[var(--green)]'
                 : 'border-[var(--border)] bg-[var(--surface)] text-[var(--text)] hover:border-[var(--muted)]'
             }`}
           >
-            {team}
+            {TEAM_CODES[team] && (
+              <img
+                src={`https://flagcdn.com/w40/${TEAM_CODES[team]}.png`}
+                alt={team}
+                className="w-8 h-6 object-cover rounded-sm flex-shrink-0"
+              />
+            )}
+            <span>{team}</span>
           </button>
         ))}
       </div>
