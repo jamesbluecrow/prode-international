@@ -1,0 +1,22 @@
+import { redirect } from 'next/navigation'
+import { createClient } from '@/lib/supabase/server'
+import { LoginForm } from './LoginForm'
+
+export default async function LoginPage() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (user) redirect('/')
+
+  return (
+    <div className="min-h-screen flex items-center justify-center px-4">
+      <div className="w-full max-w-sm">
+        <h1 className="font-display text-5xl text-center mb-2">
+          <span className="text-[var(--muted)]">PRODE</span>{' '}
+          <span className="text-[var(--gold)]">MUNDIAL</span>
+        </h1>
+        <p className="text-center text-[var(--muted)] text-sm mb-8">2026</p>
+        <LoginForm />
+      </div>
+    </div>
+  )
+}

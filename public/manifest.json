@@ -1,0 +1,12 @@
+{
+  "name": "Prode Mundial 2026",
+  "short_name": "Prode 2026",
+  "description": "Pronósticos del Mundial 2026",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0e17",
+  "theme_color": "#0a0e17",
+  "icons": [
+    { "src": "/favicon.ico", "sizes": "48x48", "type": "image/x-icon" }
+  ]
+}

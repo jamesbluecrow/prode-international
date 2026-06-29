@@ -1,65 +1,121 @@
-import Image from "next/image";
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import { StatTile } from '@/components/StatTile'
+import type { Match } from '@/lib/types'
 
-export default function Home() {
+export default async function DashboardPage() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const now = new Date().toISOString()
+
+  const [{ data: myRow }, { data: nextMatches }, { data: myPreds }, { data: allRows }] =
+    await Promise.all([
+      supabase.from('leaderboard').select('*').eq('user_id', user.id).maybeSingle(),
+      supabase.from('matches').select('*').gt('kickoff_at', now).order('kickoff_at').limit(5),
+      supabase.from('predictions').select('match_id').eq('user_id', user.id),
+      supabase.from('leaderboard').select('user_id'),
+    ])
+
+  const rank = (allRows ?? []).findIndex(r => r.user_id === user.id) + 1
+  const predMatchIds = new Set((myPreds ?? []).map(p => p.match_id))
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+    <div className="py-6 space-y-8">
+      <div>
+        <p className="text-[var(--muted)] text-sm">Bienvenido,</p>
+        <h1 className="font-display text-4xl text-[var(--gold)]">
+          {(user.email?.split('@')[0] ?? 'JUGADOR').toUpperCase()}
+        </h1>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3">
+        <StatTile label="Puntos" value={myRow?.total_points ?? 0} />
+        <StatTile label="Posición" value={rank > 0 ? `#${rank}` : '–'} />
+        <StatTile label="Exactos" value={myRow?.exact_hits ?? 0} />
+      </div>
+
+      {(nextMatches ?? []).length > 0 && (
+        <section>
+          <h2 className="font-display text-xl text-[var(--text)] mb-3">
+            PRÓXIMOS PARTIDOS
+          </h2>
+          <div className="space-y-2">
+            {(nextMatches ?? []).map((m: Match) => {
+              const hasPred = predMatchIds.has(m.id)
+              return (
+                <Link
+                  key={m.id}
+                  href="/predict"
+                  className="flex items-center gap-3 px-4 py-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] hover:border-[var(--gold)]/40 transition-colors"
+                >
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    {m.home_code && (
+                      <img
+                        src={`https://flagcdn.com/w40/${m.home_code.toLowerCase()}.png`}
+                        alt={m.home_team}
+                        className="w-6 h-4 object-cover rounded-sm flex-shrink-0"
+                      />
+                    )}
+                    <span className="text-sm font-medium truncate">
+                      {m.home_team} vs {m.away_team}
+                    </span>
+                    {m.away_code && (
+                      <img
+                        src={`https://flagcdn.com/w40/${m.away_code.toLowerCase()}.png`}
+                        alt={m.away_team}
+                        className="w-6 h-4 object-cover rounded-sm flex-shrink-0"
+                      />
+                    )}
+                  </div>
+                  <span
+                    className={`text-xs px-2 py-1 rounded font-medium flex-shrink-0 ${
+                      hasPred
+                        ? 'bg-[var(--green)]/20 text-[var(--green)]'
+                        : 'bg-[var(--red)]/20 text-[var(--red)]'
+                    }`}
+                  >
+                    {hasPred ? '✓ Listo' : 'Pendiente'}
+                  </span>
+                </Link>
+              )
+            })}
+          </div>
+        </section>
+      )}
+
+      <div className="grid grid-cols-2 gap-3">
+        <Link
+          href="/predict"
+          className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4 text-center hover:border-[var(--gold)]/40 transition-colors"
+        >
+          <p className="font-display text-lg text-[var(--gold)]">PREDECIR</p>
+          <p className="text-xs text-[var(--muted)] mt-1">Completar pronósticos</p>
+        </Link>
+        <Link
+          href="/ranking"
+          className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4 text-center hover:border-[var(--gold)]/40 transition-colors"
+        >
+          <p className="font-display text-lg text-[var(--gold)]">RANKING</p>
+          <p className="text-xs text-[var(--muted)] mt-1">Ver tabla global</p>
+        </Link>
+        <Link
+          href="/groups"
+          className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4 text-center hover:border-[var(--gold)]/40 transition-colors"
+        >
+          <p className="font-display text-lg text-[var(--gold)]">GRUPOS</p>
+          <p className="text-xs text-[var(--muted)] mt-1">Crear y unirse</p>
+        </Link>
+        <Link
+          href="/champion"
+          className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4 text-center hover:border-[var(--gold)]/40 transition-colors"
+        >
+          <p className="font-display text-lg text-[var(--gold)]">CAMPEÓN</p>
+          <p className="text-xs text-[var(--muted)] mt-1">Tu elección</p>
+        </Link>
+      </div>
     </div>
-  );
+  )
 }
