@@ -91,7 +91,7 @@ export default async function DashboardPage() {
           href="/predict"
           className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4 text-center hover:border-[var(--gold)]/40 transition-colors"
         >
-          <p className="font-display text-lg text-[var(--gold)]">PREDECIR</p>
+          <p className="font-display text-lg text-[var(--gold)]">PREDICT</p>
           <p className="text-xs text-[var(--muted)] mt-1">Make predictions</p>
         </Link>
         <Link
@@ -105,7 +105,7 @@ export default async function DashboardPage() {
           href="/groups"
           className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4 text-center hover:border-[var(--gold)]/40 transition-colors"
         >
-          <p className="font-display text-lg text-[var(--gold)]">GRUPOS</p>
+          <p className="font-display text-lg text-[var(--gold)]">GROUPS</p>
           <p className="text-xs text-[var(--muted)] mt-1">Create & join</p>
         </Link>
         <Link
