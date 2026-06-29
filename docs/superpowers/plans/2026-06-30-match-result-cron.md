@@ -1,22 +1,26 @@
-# Match Result Auto-Update Cron Job Implementation Plan
+# Match Result Auto-Update — One-Time Scheduled Jobs Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Create a Vercel Cron Job that fires at the 30-minute and 90-minute marks after each World Cup match is expected to finish, detects matches missing results in the database, fetches scores from ESPN's public soccer API (no API key required), and writes `home_score`, `away_score`, `result_final`, `predictions_locked`, and `penalty_winner` back to Supabase.
+**Goal:** For every unplayed World Cup match, schedule five one-time HTTP jobs at T+15, T+30, T+60, T+90, and T+120 minutes after the match is expected to finish. Each job fetches the result from a sports API and writes it to Supabase. Once the tournament ends and all matches have results, no jobs remain — nothing lingers.
 
-**Architecture:** A Next.js App Router route handler at `GET /api/cron/update-results` is secured with a shared `CRON_SECRET` bearer token. Vercel's cron scheduler calls it on a fixed schedule targeting the 30-min and 90-min windows after typical World Cup kickoff end times. The handler delegates to `lib/updateMatchResults.ts`, which (1) queries Supabase for matches where `result_final = false` AND `kickoff_at ≤ now − 90 min`, (2) groups them by UTC date, (3) fetches match results from the data source (ESPN first, football-data.org as fallback), (4) matches events to DB rows by normalising team names, and (5) writes results back via the service-role Supabase client. The job is fully idempotent — re-running on an already-updated match is a no-op.
+**Architecture:** QStash (by Upstash) is used for one-time future-scheduled HTTP callbacks — it is the correct tool for this because Vercel Cron only supports recurring schedules. An admin API route (`POST /api/admin/schedule-match-jobs`) reads all unplayed matches from Supabase and enqueues five QStash messages per match, each targeting `POST /api/jobs/update-match-result` at a future timestamp. The job handler verifies the QStash signature, fetches the score from ESPN (fallback: football-data.org), and writes `home_score`, `away_score`, `result_final = true`, and `penalty_winner` to Supabase via the service-role client. Jobs are idempotent — if a result is already set when a job fires, it exits immediately. No `vercel.json` cron configuration is needed.
 
-**Tech Stack:** Next.js 16.2.9 App Router (route.ts), Vercel Cron (`vercel.json`), `@supabase/supabase-js` v2 with service role key, ESPN unofficial soccer API (primary, no key required), football-data.org API (fallback, free API key required), Vitest for unit tests.
+**Tech Stack:** Next.js 16.2.9 App Router (route.ts), QStash by Upstash (`@upstash/qstash`), `@supabase/supabase-js` v2 with service role key, ESPN unofficial soccer API (primary, no key), football-data.org API (fallback, free key), Vitest for unit tests.
+
+**Answer to "does anything linger after the tournament?"** No. QStash messages are one-time deliveries. Once all scheduled jobs have fired, the queue is empty. There are no recurring crons to disable.
 
 ## Data Sources
 
-Two APIs are tried in order. The first one that returns data for a match wins.
+Two APIs are tried in order. The first one that returns a completed result for the match wins.
 
 ### Primary: ESPN (unofficial, no key required)
 ```
-https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates=YYYYMMDD&limit=50
+GET https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates=YYYYMMDD&limit=50
 ```
-Returns all matches for a given date. No API key needed. Response shape:
+No API key needed. Replace `YYYYMMDD` with the match date in UTC (e.g. `20261014`).
+
+Response shape relevant fields:
 ```json
 {
   "events": [{
@@ -31,33 +35,26 @@ Returns all matches for a given date. No API key needed. Response shape:
   }]
 }
 ```
-> The slug `fifa.world` is unconfirmed for WC 2026. Alternative slugs to try if it returns empty: `fifa.worldcup`, `fifa.world2026`. See Troubleshooting.
+> The slug `fifa.world` is unconfirmed for WC 2026. If it returns empty, try `fifa.worldcup` or `fifa.world2026`. See Troubleshooting.
 
 ### Fallback: football-data.org (free tier, API key required)
 Docs: https://www.football-data.org/documentation/quickstart
 
-Free tier: 10 requests/minute, 100 requests/day — sufficient for this cron (at most a few calls per run).
+Free tier: 10 requests/minute, 100 requests/day — more than enough.
+Register at https://www.football-data.org/ → get a free API key → set as `FOOTBALL_DATA_API_KEY`.
 
-Register for a free API key at https://www.football-data.org/ and set the env var `FOOTBALL_DATA_API_KEY`.
-
-Relevant endpoints:
 ```
-# All finished WC 2026 matches
-GET https://api.football-data.org/v4/competitions/WC/matches?status=FINISHED
-Header: X-Auth-Token: {FOOTBALL_DATA_API_KEY}
-
-# Matches for a specific date range
 GET https://api.football-data.org/v4/competitions/WC/matches?dateFrom=2026-10-14&dateTo=2026-10-14&status=FINISHED
 Header: X-Auth-Token: {FOOTBALL_DATA_API_KEY}
 ```
-Response shape:
+
+Response shape relevant fields:
 ```json
 {
   "matches": [{
     "status": "FINISHED",
-    "utcDate": "2026-10-14T18:00:00Z",
-    "homeTeam": { "name": "Spain", "shortName": "Spain", "tla": "ESP" },
-    "awayTeam": { "name": "France", "shortName": "France", "tla": "FRA" },
+    "homeTeam": { "name": "Spain" },
+    "awayTeam": { "name": "France" },
     "score": {
       "fullTime": { "home": 2, "away": 1 },
       "penalties": { "home": 4, "away": 3 }
@@ -65,78 +62,68 @@ Response shape:
   }]
 }
 ```
-The `score.penalties` field is non-null when the match went to penalties; the team with the higher penalty score is the winner.
+`score.penalties` is non-null when the match went to a shootout; the team with the higher value wins.
 
 ## Global Constraints
 
-- Next.js version: 16.2.9 — App Router only. Read `node_modules/next/dist/docs/` before writing any code; heed deprecation notices.
+- Next.js version: 16.2.9 — App Router only. Read `node_modules/next/dist/docs/` before writing any code.
 - Supabase project: `dltgbifqdwnynimhiguf`. URL: `https://dltgbifqdwnynimhiguf.supabase.co`.
-- `SUPABASE_SERVICE_ROLE_KEY` must NEVER be exposed to the browser — server-side/cron only. Start with `sb_secret_`.
-- `CRON_SECRET` env var must be set in Vercel dashboard AND in `.env.local`. Never commit either to git.
-- Vercel **Pro plan** required for `*/30 * * * *` cron frequency. Hobby plan supports at most once per day. See the fallback schedule note in Task 1.
-- No changes to existing RLS policies — the service-role key bypasses RLS, which is correct for a cron updating match data.
-- The `.eq('result_final', false)` guard in the UPDATE call prevents overwriting a result that was set by another concurrent run.
-- Team names in the DB (`home_team`, `away_team`) may differ slightly from ESPN or football-data.org names. Use the `normalizeTeamName` function defined below as the single source of truth for matching.
-- `FOOTBALL_DATA_API_KEY` is only needed if ESPN fails. Set it in `.env.local` and the Vercel dashboard if you want the fallback enabled. The cron still works without it (ESPN-only mode).
+- `SUPABASE_SERVICE_ROLE_KEY` — server-side only, never in browser code.
+- `QSTASH_TOKEN`, `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY` — server-side only.
+- `FOOTBALL_DATA_API_KEY` — optional fallback; job handler works without it (ESPN-only mode).
+- All secrets go in `.env.local` AND Vercel dashboard → Settings → Environment Variables. Never commit them.
+- No `vercel.json` cron configuration. There are no recurring schedules anywhere in this feature.
+- The schedule-seeding endpoint (`/api/admin/schedule-match-jobs`) must be protected — it checks `is_admin` from the Supabase `profiles` table using the caller's session cookie.
+- The job handler (`/api/jobs/update-match-result`) must verify the QStash signature — do not skip this, it prevents anyone from replaying job payloads.
+- Expected match end time = `kickoff_at + 2 hours`. Jobs fire at +15, +30, +60, +90, +120 minutes after that.
 
 ---
 
-### Task 1: Add `CRON_SECRET` env var and `vercel.json` cron config
+### Task 1: Set up QStash account and environment variables
 
 **Files:**
-- Create: `vercel.json`
 - Modify: `.env.local` (instruction only — never commit)
 
 **Interfaces:**
-- Produces: `CRON_SECRET` available as `process.env.CRON_SECRET` in the route handler
-- Produces: Vercel cron that sends `GET /api/cron/update-results` with header `Authorization: Bearer {CRON_SECRET}` on the configured schedule
+- Produces: `QSTASH_TOKEN` available as `process.env.QSTASH_TOKEN`
+- Produces: `QSTASH_CURRENT_SIGNING_KEY` and `QSTASH_NEXT_SIGNING_KEY` available in the job handler for signature verification
 
-- [ ] **Step 1: Generate a random secret**
+- [ ] **Step 1: Create a free QStash account**
 
-```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-```
+Go to https://console.upstash.com/ → sign up → create a QStash instance.
 
-Expected: a 64-character hex string. Copy it.
+In the QStash dashboard, copy:
+- **QSTASH_TOKEN** — used to publish messages
+- **QSTASH_CURRENT_SIGNING_KEY** — used to verify incoming job requests
+- **QSTASH_NEXT_SIGNING_KEY** — rotated key, also used for verification
 
-- [ ] **Step 2: Add `CRON_SECRET` to `.env.local`**
-
-Append this line to `.env.local` (create the file if it doesn't exist — do **not** commit it):
-```
-CRON_SECRET=<paste the generated hex value here>
-```
-
-- [ ] **Step 3: Add `CRON_SECRET` to Vercel dashboard**
-
-Go to https://vercel.com/dashboard → your project → Settings → Environment Variables → add:
-- Key: `CRON_SECRET`
-- Value: same hex value from Step 1
-- Environments: Production, Preview, Development
-
-- [ ] **Step 4: Create `vercel.json`**
-
-World Cup 2026 is hosted in USA/Canada/Mexico. Typical UTC kickoff times: 16:00, 19:00, 22:00, 00:00, 01:00. Expected match end (kickoff + 2h): 18:00, 21:00, 00:00, 02:00, 03:00. The schedule below fires at T+30min and T+90min for each of those end times.
-
-```json
-{
-  "crons": [
-    {
-      "path": "/api/cron/update-results",
-      "schedule": "30 18,19,21,22,0,1,2,3,4 * * *"
-    }
-  ]
-}
-```
-
-> **Hobby plan fallback:** Hobby only supports one cron firing per day. Change the schedule to `0 5 * * *` (5:00 AM UTC, after all games from the previous day are done) and the job will catch every result in one daily sweep. Results may be delayed by up to ~14 hours compared to the Pro schedule.
->
-> **Simpler alternative (Pro):** `*/30 * * * *` runs every 30 minutes and is equally correct — the job skips runs where no matches need updating. Use this if uncertain about kickoff time distribution.
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 2: Install the QStash SDK**
 
 ```bash
-git add vercel.json
-git commit -m "feat: add vercel cron schedule for match result updates"
+npm install @upstash/qstash
+```
+
+Expected: `@upstash/qstash` appears in `dependencies` in `package.json`.
+
+- [ ] **Step 3: Add secrets to `.env.local`**
+
+Append to `.env.local` (do not commit):
+```
+QSTASH_TOKEN=<paste from Upstash dashboard>
+QSTASH_CURRENT_SIGNING_KEY=<paste from Upstash dashboard>
+QSTASH_NEXT_SIGNING_KEY=<paste from Upstash dashboard>
+FOOTBALL_DATA_API_KEY=<optional — register at football-data.org for free>
+```
+
+- [ ] **Step 4: Add secrets to Vercel dashboard**
+
+Go to Vercel dashboard → Project → Settings → Environment Variables. Add each of the four keys above (Production + Preview + Development). The job handler will not work without them deployed.
+
+- [ ] **Step 5: Commit the SDK addition**
+
+```bash
+git add package.json package-lock.json
+git commit -m "feat: add @upstash/qstash for one-time match job scheduling"
 ```
 
 ---
@@ -147,8 +134,7 @@ git commit -m "feat: add vercel cron schedule for match result updates"
 - Create: `lib/supabase/service.ts`
 
 **Interfaces:**
-- Consumes: `process.env.NEXT_PUBLIC_SUPABASE_URL`, `process.env.SUPABASE_SERVICE_ROLE_KEY`
-- Produces: `createServiceClient(): SupabaseClient<Database>` — bypasses RLS, must only be called in server-side code
+- Produces: `createServiceClient(): SupabaseClient<Database>` — bypasses RLS, server-side only
 
 - [ ] **Step 1: Create `lib/supabase/service.ts`**
 
@@ -171,7 +157,7 @@ export function createServiceClient() {
 npx tsc --noEmit
 ```
 
-Expected: no errors output.
+Expected: no errors.
 
 - [ ] **Step 3: Commit**
 
@@ -182,28 +168,33 @@ git commit -m "feat: add service-role supabase client for server-side use"
 
 ---
 
-### Task 3: Implement `lib/updateMatchResults.ts` with ESPN fetch and DB update logic
+### Task 3: Implement `lib/matchResultFetcher.ts` — sports API fetch logic
 
 **Files:**
-- Create: `lib/updateMatchResults.ts`
-- Create: `lib/updateMatchResults.test.ts`
+- Create: `lib/matchResultFetcher.ts`
+- Create: `lib/matchResultFetcher.test.ts`
 - Create: `vitest.config.ts`
 - Modify: `package.json` (add vitest, add `test` script)
 
 **Interfaces:**
-- Consumes: `createServiceClient()` from `@/lib/supabase/service`
-- Consumes: `Match` type from `@/lib/types`
-- Produces: `updateMatchResults(): Promise<{ updated: number; skipped: number; errors: string[] }>`
+- Consumes: `Match` from `@/lib/types`
+- Produces: `fetchMatchResult(match: Match): Promise<MatchResult | null>`
+  ```typescript
+  type MatchResult = {
+    homeScore: number
+    awayScore: number
+    penaltyWinner: string | null  // team name string, or null if no shootout
+  }
+  ```
 - Produces (exported for tests): `normalizeTeamName(name: string): string`
 - Produces (exported for tests): `parseESPNPenaltyWinner(notes: Array<{ text: string }>): string | null`
+- Produces (exported for tests): `parseFDOPenaltyWinner(score: { penalties: { home: number; away: number } | null }, homeTeam: string, awayTeam: string): string | null`
 
 - [ ] **Step 1: Install Vitest**
 
 ```bash
 npm install -D vitest @vitest/coverage-v8
 ```
-
-Expected: vitest appears in `devDependencies` in `package.json`.
 
 - [ ] **Step 2: Create `vitest.config.ts`**
 
@@ -212,79 +203,68 @@ import { defineConfig } from 'vitest/config'
 import path from 'path'
 
 export default defineConfig({
-  test: {
-    environment: 'node',
-  },
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, '.'),
-    },
-  },
+  test: { environment: 'node' },
+  resolve: { alias: { '@': path.resolve(__dirname, '.') } },
 })
 ```
 
 - [ ] **Step 3: Add `test` script to `package.json`**
 
-In the `"scripts"` section of `package.json`, add:
+In the `"scripts"` object, add:
 ```json
 "test": "vitest run",
 "test:watch": "vitest"
 ```
 
-- [ ] **Step 4: Write failing tests in `lib/updateMatchResults.test.ts`**
+- [ ] **Step 4: Write failing tests in `lib/matchResultFetcher.test.ts`**
 
 ```typescript
 import { describe, it, expect } from 'vitest'
-import { normalizeTeamName, parseESPNPenaltyWinner } from './updateMatchResults'
+import {
+  normalizeTeamName,
+  parseESPNPenaltyWinner,
+  parseFDOPenaltyWinner,
+} from './matchResultFetcher'
 
 describe('normalizeTeamName', () => {
   it('lowercases and strips non-alphanumeric', () => {
     expect(normalizeTeamName('Netherlands')).toBe('netherlands')
   })
-
   it('maps "United States" to "usa"', () => {
     expect(normalizeTeamName('United States')).toBe('usa')
   })
-
-  it('handles accented characters by stripping the accent', () => {
-    // NFD decomposition: 'ô' → 'o' + combining circumflex → strip combining → 'o'
+  it('strips accents via NFD decomposition', () => {
     expect(normalizeTeamName('Côte d\'Ivoire')).toBe('cotedivoire')
   })
-
-  it('strips hyphens from compound names', () => {
+  it('strips hyphens', () => {
     expect(normalizeTeamName('Bosnia-Herzegovina')).toBe('bosniaherzegovina')
-  })
-
-  it('handles already-normalised input', () => {
-    expect(normalizeTeamName('brazil')).toBe('brazil')
   })
 })
 
 describe('parseESPNPenaltyWinner', () => {
-  it('returns null when notes array is empty', () => {
+  it('returns null for empty notes', () => {
     expect(parseESPNPenaltyWinner([])).toBeNull()
   })
-
-  it('returns null when notes contain no penalty mention', () => {
+  it('returns null when no penalty mention', () => {
     expect(parseESPNPenaltyWinner([{ text: 'Attendance: 80,000' }])).toBeNull()
   })
-
-  it('extracts single-word team from "Spain won on penalties"', () => {
+  it('extracts single-word winner', () => {
     expect(parseESPNPenaltyWinner([{ text: 'Spain won on penalties' }])).toBe('Spain')
   })
-
-  it('extracts multi-word team from "South Korea won on penalties"', () => {
+  it('extracts multi-word winner', () => {
     expect(parseESPNPenaltyWinner([{ text: 'South Korea won on penalties' }])).toBe('South Korea')
   })
+})
 
-  it('handles "penalty shootout" phrasing', () => {
-    expect(parseESPNPenaltyWinner([{ text: 'France won after penalty shootout' }])).toBe('France')
+describe('parseFDOPenaltyWinner', () => {
+  it('returns null when penalties is null', () => {
+    expect(parseFDOPenaltyWinner({ penalties: null }, 'Spain', 'France')).toBeNull()
   })
-
-  it('ignores non-penalty notes and returns null', () => {
-    expect(parseESPNPenaltyWinner([
-      { text: 'Germany won on penalties' }
-    ])).toBe('Germany')
+  it('returns home team when home penalty score is higher', () => {
+    expect(parseFDOPenaltyWinner({ penalties: { home: 4, away: 3 } }, 'Spain', 'France')).toBe('Spain')
+  })
+  it('returns away team when away penalty score is higher', () => {
+    expect(parseFDOPenaltyWinner({ penalties: { home: 2, away: 4 } }, 'Spain', 'France')).toBe('France')
   })
 })
 ```
@@ -295,47 +275,30 @@ describe('parseESPNPenaltyWinner', () => {
 npm test
 ```
 
-Expected: FAIL — "Cannot find module './updateMatchResults'".
+Expected: FAIL — "Cannot find module './matchResultFetcher'".
 
-- [ ] **Step 6: Implement `lib/updateMatchResults.ts`**
+- [ ] **Step 6: Implement `lib/matchResultFetcher.ts`**
 
 ```typescript
-import { createServiceClient } from '@/lib/supabase/service'
 import type { Match } from '@/lib/types'
 
-// ─── ESPN API types ──────────────────────────────────────────────────────────
-
-type ESPNNote = { text: string }
-
-type ESPNCompetitor = {
-  homeAway: 'home' | 'away'
-  team: { displayName: string; abbreviation: string }
-  score: string
+export type MatchResult = {
+  homeScore: number
+  awayScore: number
+  penaltyWinner: string | null
 }
 
-type ESPNEvent = {
-  date: string
-  status: { type: { name: string; completed: boolean } }
-  competitions: Array<{
-    competitors: ESPNCompetitor[]
-    notes?: ESPNNote[]
-  }>
-}
+// ─── Team name normalisation ──────────────────────────────────────────────────
 
-// ─── Team name normalisation ─────────────────────────────────────────────────
-
-// Overrides applied AFTER the generic strip — add any mismatches found in production.
 const OVERRIDES: Record<string, string> = {
   unitedstates: 'usa',
   unitedstatesofamerica: 'usa',
-  unitedkingdom: 'england',
   republicofkorea: 'southkorea',
   korearepublic: 'southkorea',
   democraticrepublicofthecongo: 'drcongo',
 }
 
 export function normalizeTeamName(name: string): string {
-  // Decompose accented chars (ô → o + combining circumflex), then strip combinings
   const ascii = name
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
@@ -344,40 +307,17 @@ export function normalizeTeamName(name: string): string {
   return OVERRIDES[ascii] ?? ascii
 }
 
-// ─── Penalty winner extraction ───────────────────────────────────────────────
+// ─── ESPN helpers ─────────────────────────────────────────────────────────────
 
-export function parseESPNPenaltyWinner(notes: ESPNNote[]): string | null {
+export function parseESPNPenaltyWinner(notes: Array<{ text: string }>): string | null {
   for (const note of notes) {
     const lower = note.text.toLowerCase()
     if (!lower.includes('penalt') && !lower.includes('shootout')) continue
-    // "South Korea won on penalties" → capture everything before " won"
     const m = note.text.match(/^(.+?)\s+won\b/i)
     if (m) return m[1]
   }
   return null
 }
-
-// ─── ESPN API fetch ──────────────────────────────────────────────────────────
-
-// dateStr format: YYYYMMDD (e.g. "20261014")
-// ESPN competition slug for FIFA World Cup: verify this URL is still correct for
-// WC 2026 before deploying. Alternative slug to try: "fifa.worldcup"
-async function fetchESPNScoreboard(dateStr: string): Promise<ESPNEvent[]> {
-  const url =
-    `https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard` +
-    `?dates=${dateStr}&limit=50`
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'prode-international-cron/1.0' },
-    cache: 'no-store',
-  })
-  if (!res.ok) {
-    throw new Error(`ESPN API responded ${res.status} for date ${dateStr}`)
-  }
-  const data = await res.json()
-  return (data.events ?? []) as ESPNEvent[]
-}
-
-// ─── DB match → ESPN event matching ─────────────────────────────────────────
 
 function toDateKey(isoString: string): string {
   const d = new Date(isoString)
@@ -388,124 +328,120 @@ function toDateKey(isoString: string): string {
   ].join('')
 }
 
-function findESPNEvent(events: ESPNEvent[], match: Match): ESPNEvent | null {
+async function fetchFromESPN(match: Match): Promise<MatchResult | null> {
+  // NOTE: verify the slug 'fifa.world' works for WC 2026.
+  // Alternative slugs to try if it returns empty: 'fifa.worldcup', 'fifa.world2026'
+  const dateKey = toDateKey(match.kickoff_at)
+  const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates=${dateKey}&limit=50`
+
+  const res = await fetch(url, {
+    headers: { 'User-Agent': 'prode-international/1.0' },
+    cache: 'no-store',
+  })
+  if (!res.ok) throw new Error(`ESPN ${res.status}`)
+
+  const data = await res.json()
+  const events: unknown[] = data.events ?? []
+
   const homeNorm = normalizeTeamName(match.home_team)
   const awayNorm = normalizeTeamName(match.away_team)
 
-  return (
-    events.find(event => {
-      const comp = event.competitions[0]
-      if (!comp) return false
-      const homeComp = comp.competitors.find(c => c.homeAway === 'home')
-      const awayComp = comp.competitors.find(c => c.homeAway === 'away')
-      if (!homeComp || !awayComp) return false
-      return (
-        normalizeTeamName(homeComp.team.displayName) === homeNorm &&
-        normalizeTeamName(awayComp.team.displayName) === awayNorm
-      )
-    }) ?? null
-  )
+  for (const event of events as any[]) {
+    const comp = event.competitions?.[0]
+    if (!comp) continue
+    const homeComp = comp.competitors?.find((c: any) => c.homeAway === 'home')
+    const awayComp = comp.competitors?.find((c: any) => c.homeAway === 'away')
+    if (!homeComp || !awayComp) continue
+
+    if (
+      normalizeTeamName(homeComp.team.displayName) !== homeNorm ||
+      normalizeTeamName(awayComp.team.displayName) !== awayNorm
+    ) continue
+
+    if (!event.status?.type?.completed) return null  // match found but still in progress
+
+    return {
+      homeScore: parseInt(homeComp.score, 10),
+      awayScore: parseInt(awayComp.score, 10),
+      penaltyWinner: match.is_knockout
+        ? parseESPNPenaltyWinner(comp.notes ?? [])
+        : null,
+    }
+  }
+
+  return null  // match not found in ESPN response
 }
 
-// ─── Main export ─────────────────────────────────────────────────────────────
+// ─── football-data.org helpers ────────────────────────────────────────────────
 
-export async function updateMatchResults(): Promise<{
-  updated: number
-  skipped: number
-  errors: string[]
-}> {
-  const supabase = createServiceClient()
+export function parseFDOPenaltyWinner(
+  score: { penalties: { home: number; away: number } | null },
+  homeTeam: string,
+  awayTeam: string
+): string | null {
+  if (!score.penalties) return null
+  return score.penalties.home > score.penalties.away ? homeTeam : awayTeam
+}
 
-  // Only consider matches where at least 90 minutes have passed since kickoff
-  const cutoff = new Date(Date.now() - 90 * 60 * 1000).toISOString()
+async function fetchFromFDO(match: Match): Promise<MatchResult | null> {
+  const apiKey = process.env.FOOTBALL_DATA_API_KEY
+  if (!apiKey) return null  // fallback disabled
 
-  const { data: pendingMatches, error: queryError } = await supabase
-    .from('matches')
-    .select('*')
-    .eq('result_final', false)
-    .lte('kickoff_at', cutoff)
+  const d = new Date(match.kickoff_at)
+  const dateStr = d.toISOString().slice(0, 10)  // YYYY-MM-DD
+  const url = `https://api.football-data.org/v4/competitions/WC/matches?dateFrom=${dateStr}&dateTo=${dateStr}&status=FINISHED`
 
-  if (queryError) throw new Error(`Supabase query failed: ${queryError.message}`)
-  if (!pendingMatches || pendingMatches.length === 0) {
-    return { updated: 0, skipped: 0, errors: [] }
+  const res = await fetch(url, {
+    headers: { 'X-Auth-Token': apiKey },
+    cache: 'no-store',
+  })
+  if (!res.ok) throw new Error(`football-data.org ${res.status}`)
+
+  const data = await res.json()
+  const matches: unknown[] = data.matches ?? []
+
+  const homeNorm = normalizeTeamName(match.home_team)
+  const awayNorm = normalizeTeamName(match.away_team)
+
+  for (const m of matches as any[]) {
+    if (m.status !== 'FINISHED') continue
+    if (
+      normalizeTeamName(m.homeTeam.name) !== homeNorm ||
+      normalizeTeamName(m.awayTeam.name) !== awayNorm
+    ) continue
+
+    const homeScore: number = m.score.fullTime.home
+    const awayScore: number = m.score.fullTime.away
+    const penaltyWinner = match.is_knockout
+      ? parseFDOPenaltyWinner(m.score, match.home_team, match.away_team)
+      : null
+
+    return { homeScore, awayScore, penaltyWinner }
   }
 
-  // Group pending matches by UTC date so we make one ESPN call per date
-  const byDate = new Map<string, Match[]>()
-  for (const match of pendingMatches as Match[]) {
-    const key = toDateKey(match.kickoff_at)
-    if (!byDate.has(key)) byDate.set(key, [])
-    byDate.get(key)!.push(match)
+  return null
+}
+
+// ─── Main export ──────────────────────────────────────────────────────────────
+
+export async function fetchMatchResult(match: Match): Promise<MatchResult | null> {
+  // Try ESPN first
+  try {
+    const result = await fetchFromESPN(match)
+    if (result) return result
+  } catch (e) {
+    console.warn(`[fetchMatchResult] ESPN failed for match ${match.id}:`, (e as Error).message)
   }
 
-  let updated = 0
-  let skipped = 0
-  const errors: string[] = []
-
-  for (const [dateKey, matches] of byDate) {
-    let events: ESPNEvent[]
-    try {
-      events = await fetchESPNScoreboard(dateKey)
-    } catch (e) {
-      errors.push(`ESPN fetch for ${dateKey}: ${(e as Error).message}`)
-      skipped += matches.length
-      continue
-    }
-
-    for (const match of matches) {
-      const event = findESPNEvent(events, match)
-
-      if (!event) {
-        // Not found in ESPN response — team name mismatch or match not yet listed
-        errors.push(`No ESPN event found for: ${match.home_team} vs ${match.away_team} on ${dateKey}`)
-        skipped++
-        continue
-      }
-
-      if (!event.status.type.completed) {
-        // Match found but still in progress
-        skipped++
-        continue
-      }
-
-      const comp = event.competitions[0]
-      const homeComp = comp.competitors.find(c => c.homeAway === 'home')!
-      const awayComp = comp.competitors.find(c => c.homeAway === 'away')!
-
-      const homeScore = parseInt(homeComp.score, 10)
-      const awayScore = parseInt(awayComp.score, 10)
-      const penaltyWinner = match.is_knockout
-        ? parseESPNPenaltyWinner(comp.notes ?? [])
-        : null
-
-      const payload: Record<string, unknown> = {
-        home_score: homeScore,
-        away_score: awayScore,
-        result_final: true,
-        predictions_locked: true,
-      }
-      if (penaltyWinner !== null) payload.penalty_winner = penaltyWinner
-
-      // .eq('result_final', false) is a guard: if another concurrent run already
-      // wrote the result, this update silently matches 0 rows — that's fine.
-      const { error: updateError } = await supabase
-        .from('matches')
-        .update(payload)
-        .eq('id', match.id)
-        .eq('result_final', false)
-
-      if (updateError) {
-        errors.push(
-          `Update failed for ${match.home_team} vs ${match.away_team} (${match.id}): ${updateError.message}`
-        )
-        skipped++
-      } else {
-        updated++
-      }
-    }
+  // Fallback to football-data.org
+  try {
+    const result = await fetchFromFDO(match)
+    if (result) return result
+  } catch (e) {
+    console.warn(`[fetchMatchResult] FDO failed for match ${match.id}:`, (e as Error).message)
   }
 
-  return { updated, skipped, errors }
+  return null
 }
 ```
 
@@ -515,14 +451,11 @@ export async function updateMatchResults(): Promise<{
 npm test
 ```
 
-Expected output:
+Expected:
 ```
-✓ lib/updateMatchResults.test.ts (11)
-  ✓ normalizeTeamName (5)
-  ✓ parseESPNPenaltyWinner (6)
-
+✓ lib/matchResultFetcher.test.ts (10)
 Test Files  1 passed (1)
-Tests  11 passed (11)
+Tests  10 passed (10)
 ```
 
 - [ ] **Step 8: Verify TypeScript compiles**
@@ -536,59 +469,111 @@ Expected: no errors.
 - [ ] **Step 9: Commit**
 
 ```bash
-git add lib/updateMatchResults.ts lib/updateMatchResults.test.ts vitest.config.ts package.json package-lock.json
-git commit -m "feat: add match result fetcher with ESPN scoreboard API and unit tests"
+git add lib/matchResultFetcher.ts lib/matchResultFetcher.test.ts vitest.config.ts package.json package-lock.json
+git commit -m "feat: add match result fetcher with ESPN and football-data.org fallback"
 ```
 
 ---
 
-### Task 4: Create the cron route handler
+### Task 4: Create the job handler `POST /api/jobs/update-match-result`
+
+This is the endpoint QStash calls at each scheduled time. It verifies the QStash signature, fetches the result for the given match, and writes it to Supabase.
 
 **Files:**
-- Create: `app/api/cron/update-results/route.ts`
+- Create: `app/api/jobs/update-match-result/route.ts`
 
 **Interfaces:**
-- Consumes: `updateMatchResults()` from `@/lib/updateMatchResults`
-- Consumes: `process.env.CRON_SECRET`
-- Produces: `GET /api/cron/update-results`
-  - 200 `{ success: true, updated: number, skipped: number, errors: string[] }` on success
-  - 401 `{ error: "Unauthorized" }` when bearer token is missing or wrong
-  - 500 `{ success: false, error: string }` on thrown exception
+- Consumes: QStash message body `{ matchId: string }`
+- Consumes: `fetchMatchResult(match)` from `@/lib/matchResultFetcher`
+- Consumes: `createServiceClient()` from `@/lib/supabase/service`
+- Produces: `POST /api/jobs/update-match-result`
+  - 200 `{ status: "updated" | "already_done" | "not_finished_yet" | "not_found" }`
+  - 401 when QStash signature is invalid
 
-- [ ] **Step 1: Check Next.js 16 route handler conventions**
+- [ ] **Step 1: Check the QStash receiver API**
 
-Before writing the file, read:
-```bash
-cat node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md | head -60
+The `@upstash/qstash` package exports a `Receiver` class for signature verification:
+```typescript
+import { Receiver } from '@upstash/qstash'
+const receiver = new Receiver({
+  currentSigningKey: process.env.QSTASH_CURRENT_SIGNING_KEY!,
+  nextSigningKey: process.env.QSTASH_NEXT_SIGNING_KEY!,
+})
+// Throws if invalid:
+await receiver.verify({ signature: req.headers['upstash-signature'], body: rawBody })
 ```
 
-Confirm: route handlers export named HTTP method functions (`GET`, `POST`, etc.) and receive a `Request` argument. The `runtime` and `maxDuration` exports are route segment config constants.
-
-- [ ] **Step 2: Create `app/api/cron/update-results/route.ts`**
+- [ ] **Step 2: Create `app/api/jobs/update-match-result/route.ts`**
 
 ```typescript
-import { updateMatchResults } from '@/lib/updateMatchResults'
+import { Receiver } from '@upstash/qstash'
+import { fetchMatchResult } from '@/lib/matchResultFetcher'
+import { createServiceClient } from '@/lib/supabase/service'
 
 export const runtime = 'nodejs'
-export const maxDuration = 60  // seconds — enough for multiple ESPN calls + DB writes
+export const maxDuration = 30
 
-export async function GET(request: Request) {
-  const authHeader = request.headers.get('authorization')
-  const secret = process.env.CRON_SECRET
+const receiver = new Receiver({
+  currentSigningKey: process.env.QSTASH_CURRENT_SIGNING_KEY!,
+  nextSigningKey: process.env.QSTASH_NEXT_SIGNING_KEY!,
+})
 
-  if (!secret || authHeader !== `Bearer ${secret}`) {
-    return Response.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+export async function POST(request: Request) {
+  const rawBody = await request.text()
 
+  // Verify the request came from QStash, not an arbitrary caller
   try {
-    const result = await updateMatchResults()
-    console.log('[cron:update-results]', JSON.stringify(result))
-    return Response.json({ success: true, ...result })
-  } catch (e) {
-    const message = e instanceof Error ? e.message : String(e)
-    console.error('[cron:update-results] fatal error:', message)
-    return Response.json({ success: false, error: message }, { status: 500 })
+    await receiver.verify({
+      signature: request.headers.get('upstash-signature') ?? '',
+      body: rawBody,
+    })
+  } catch {
+    return Response.json({ error: 'Invalid signature' }, { status: 401 })
   }
+
+  const { matchId } = JSON.parse(rawBody) as { matchId: string }
+  const supabase = createServiceClient()
+
+  // Fetch the match
+  const { data: match, error: fetchError } = await supabase
+    .from('matches')
+    .select('*')
+    .eq('id', matchId)
+    .single()
+
+  if (fetchError || !match) {
+    return Response.json({ status: 'not_found', matchId })
+  }
+
+  // Already done — idempotent exit
+  if (match.result_final) {
+    return Response.json({ status: 'already_done', matchId })
+  }
+
+  const result = await fetchMatchResult(match)
+
+  if (!result) {
+    // APIs returned no completed result — match may still be in progress
+    return Response.json({ status: 'not_finished_yet', matchId })
+  }
+
+  const payload: Record<string, unknown> = {
+    home_score: result.homeScore,
+    away_score: result.awayScore,
+    result_final: true,
+    predictions_locked: true,
+  }
+  if (result.penaltyWinner !== null) payload.penalty_winner = result.penaltyWinner
+
+  // Guard: only update if still not final (prevents concurrent job overwrite)
+  await supabase
+    .from('matches')
+    .update(payload)
+    .eq('id', matchId)
+    .eq('result_final', false)
+
+  console.log(`[update-match-result] updated ${matchId}: ${result.homeScore}-${result.awayScore}`)
+  return Response.json({ status: 'updated', matchId, ...result })
 }
 ```
 
@@ -600,46 +585,145 @@ npx tsc --noEmit
 
 Expected: no errors.
 
-- [ ] **Step 4: Test the endpoint locally**
-
-Start the dev server:
-```bash
-npm run dev
-```
-
-In a second terminal:
-```bash
-CRON_SECRET=$(grep ^CRON_SECRET .env.local | cut -d= -f2)
-curl -s -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/update-results | jq
-```
-
-Expected (when no pending matches exist in dev):
-```json
-{ "success": true, "updated": 0, "skipped": 0, "errors": [] }
-```
-
-Test that an invalid token is rejected:
-```bash
-curl -s http://localhost:3000/api/cron/update-results | jq
-```
-
-Expected:
-```json
-{ "error": "Unauthorized" }
-```
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add app/api/cron/update-results/route.ts
-git commit -m "feat: add cron route handler for match result updates"
+git add app/api/jobs/update-match-result/route.ts
+git commit -m "feat: add QStash job handler for individual match result updates"
 ```
 
 ---
 
-### Task 5: Deploy and verify end-to-end
+### Task 5: Create the schedule-seeding endpoint `POST /api/admin/schedule-match-jobs`
 
-**Files:** (no new files — deploy and verify only)
+This endpoint is called once (or whenever new matches become known) to enqueue all five QStash jobs for every unplayed match. It is admin-only.
+
+**Files:**
+- Create: `app/api/admin/schedule-match-jobs/route.ts`
+
+**Interfaces:**
+- Consumes: `createClient()` from `@/lib/supabase/server` (reads caller's session to check `is_admin`)
+- Consumes: `createServiceClient()` from `@/lib/supabase/service` (reads all unplayed matches)
+- Consumes: `QSTASH_TOKEN` env var
+- Produces: `POST /api/admin/schedule-match-jobs`
+  - Optional body: `{ matchId: string }` to schedule a single match (omit to schedule all unplayed)
+  - 200 `{ scheduled: number, jobs: Array<{ matchId, notBefore }> }`
+  - 401 if caller is not admin
+
+- [ ] **Step 1: Create `app/api/admin/schedule-match-jobs/route.ts`**
+
+```typescript
+import { Client } from '@upstash/qstash'
+import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
+import type { Match } from '@/lib/types'
+
+export const runtime = 'nodejs'
+
+// Minutes after expected match end to fire each job
+const OFFSETS_MINUTES = [15, 30, 60, 90, 120]
+const MATCH_DURATION_MINUTES = 120  // kickoff + 2h = expected end
+
+function jobsForMatch(match: Match, baseUrl: string) {
+  const kickoff = new Date(match.kickoff_at).getTime()
+  const expectedEnd = kickoff + MATCH_DURATION_MINUTES * 60 * 1000
+
+  return OFFSETS_MINUTES.map(offset => ({
+    matchId: match.id,
+    notBefore: Math.floor((expectedEnd + offset * 60 * 1000) / 1000),  // unix seconds
+    url: `${baseUrl}/api/jobs/update-match-result`,
+  }))
+}
+
+export async function POST(request: Request) {
+  // Check admin status from caller's session
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('is_admin')
+    .eq('id', user.id)
+    .single()
+
+  if (!profile?.is_admin) {
+    return Response.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  // Determine base URL (production vs preview)
+  const origin = request.headers.get('origin') ??
+    process.env.NEXT_PUBLIC_APP_URL ??
+    'https://prode-international.vercel.app'
+
+  // Optionally scope to a single match
+  let body: { matchId?: string } = {}
+  try { body = await request.json() } catch { /* empty body is fine */ }
+
+  const serviceClient = createServiceClient()
+  let query = serviceClient
+    .from('matches')
+    .select('*')
+    .eq('result_final', false)
+    .gt('kickoff_at', new Date().toISOString())  // only future matches
+
+  if (body.matchId) query = query.eq('id', body.matchId) as typeof query
+
+  const { data: matches, error } = await query
+  if (error) return Response.json({ error: error.message }, { status: 500 })
+  if (!matches || matches.length === 0) {
+    return Response.json({ scheduled: 0, jobs: [] })
+  }
+
+  const qstash = new Client({ token: process.env.QSTASH_TOKEN! })
+  const scheduled: Array<{ matchId: string; notBefore: number }> = []
+
+  for (const match of matches as Match[]) {
+    for (const job of jobsForMatch(match, origin)) {
+      await qstash.publishJSON({
+        url: job.url,
+        body: { matchId: job.matchId },
+        notBefore: job.notBefore,
+      })
+      scheduled.push({ matchId: job.matchId, notBefore: job.notBefore })
+    }
+  }
+
+  console.log(`[schedule-match-jobs] queued ${scheduled.length} jobs for ${matches.length} matches`)
+  return Response.json({ scheduled: scheduled.length, jobs: scheduled })
+}
+```
+
+- [ ] **Step 2: Add `NEXT_PUBLIC_APP_URL` to env (optional but recommended)**
+
+Add to `.env.local`:
+```
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+```
+
+Add to Vercel dashboard (Production only):
+```
+NEXT_PUBLIC_APP_URL=https://prode-international.vercel.app
+```
+
+- [ ] **Step 3: Verify TypeScript compiles**
+
+```bash
+npx tsc --noEmit
+```
+
+Expected: no errors.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add app/api/admin/schedule-match-jobs/route.ts
+git commit -m "feat: add admin endpoint to seed QStash jobs for upcoming matches"
+```
+
+---
+
+### Task 6: Deploy and seed the schedule
 
 - [ ] **Step 1: Push to trigger Vercel deploy**
 
@@ -647,35 +731,44 @@ git commit -m "feat: add cron route handler for match result updates"
 git push
 ```
 
-Watch the Vercel dashboard for a successful build. If the build fails, check the build logs — the most likely cause is a TypeScript error that `tsc --noEmit` missed.
+Confirm the Vercel build succeeds in the dashboard.
 
-- [ ] **Step 2: Confirm `CRON_SECRET` is set in Vercel**
+- [ ] **Step 2: Confirm all env vars are set in Vercel**
 
-Go to Vercel dashboard → Project → Settings → Environment Variables.
-Confirm `CRON_SECRET` exists with a non-empty value. If missing, add it from Task 1 Step 1, then trigger a re-deploy (Settings → Deployments → Redeploy).
+Check Vercel dashboard → Project → Settings → Environment Variables. These must exist:
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `QSTASH_TOKEN`
+- `QSTASH_CURRENT_SIGNING_KEY`
+- `QSTASH_NEXT_SIGNING_KEY`
+- `NEXT_PUBLIC_APP_URL` (set to `https://prode-international.vercel.app`)
+- `FOOTBALL_DATA_API_KEY` (optional fallback)
 
-- [ ] **Step 3: Manually invoke the production endpoint**
+- [ ] **Step 3: Seed jobs for all upcoming matches**
+
+Log in to the app as an admin user (jamesbluecrow@gmail.com or franbrignone@gmail.com), then run:
 
 ```bash
-PROD_SECRET=<your CRON_SECRET value>
-curl -s \
-  -H "Authorization: Bearer $PROD_SECRET" \
-  https://prode-international.vercel.app/api/cron/update-results | jq
+# Get your session cookie from the browser (DevTools → Application → Cookies → sb-*-auth-token)
+# Or call this from the Admin panel once a UI button is added (see optional Task 7)
+curl -s -X POST \
+  -H "Content-Type: application/json" \
+  -H "Cookie: <paste your sb-auth-token cookie here>" \
+  https://prode-international.vercel.app/api/admin/schedule-match-jobs | jq
 ```
 
-Expected: `{ "success": true, "updated": 0, "skipped": 0, "errors": [] }` (no pending matches between deployments is normal).
+Expected:
+```json
+{ "scheduled": 125, "jobs": [...] }
+```
+(25 matches × 5 jobs = 125, if 25 matches remain at time of seeding)
 
-- [ ] **Step 4: Verify cron job is registered in Vercel**
+- [ ] **Step 4: Verify jobs appear in QStash dashboard**
 
-Go to Vercel dashboard → Project → Settings → Cron Jobs.
-Confirm `/api/cron/update-results` appears with the schedule from `vercel.json`.
+Go to https://console.upstash.com/ → QStash → Messages. Confirm the scheduled messages appear with future `notBefore` timestamps.
 
-If nothing appears, Vercel may not have picked up `vercel.json` yet. Force a re-deploy.
+- [ ] **Step 5: Smoke-test with a single past match**
 
-- [ ] **Step 5: Smoke-test with a real match (staging test)**
-
-In the Supabase dashboard (https://supabase.com/dashboard/project/dltgbifqdwnynimhiguf), run this SQL to temporarily revert a known-finished match:
-
+Temporarily revert a finished match in Supabase SQL editor:
 ```sql
 UPDATE matches
 SET result_final = false, home_score = NULL, away_score = NULL, predictions_locked = false
@@ -684,42 +777,62 @@ WHERE home_team = 'South Africa' AND away_team = 'Canada'
 LIMIT 1;
 ```
 
-Then invoke the cron endpoint:
+Get the match ID:
+```sql
+SELECT id FROM matches WHERE home_team = 'South Africa' AND away_team = 'Canada';
+```
+
+Manually invoke the job handler (simulating a QStash call — skip signature check only in local dev):
 ```bash
-curl -s \
-  -H "Authorization: Bearer $PROD_SECRET" \
-  https://prode-international.vercel.app/api/cron/update-results | jq
+# On localhost with QSTASH_CURRENT_SIGNING_KEY set, the Receiver will reject requests
+# without a valid signature. To test locally, temporarily return 200 in the handler
+# before the receiver.verify() call, then revert after testing.
+curl -s -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"matchId":"<paste match id>"}' \
+  http://localhost:3000/api/jobs/update-match-result | jq
 ```
 
-Expected:
-```json
-{ "success": true, "updated": 1, "skipped": 0, "errors": [] }
-```
+Expected: `{ "status": "updated", "matchId": "...", "homeScore": 2, "awayScore": 0, "penaltyWinner": null }` (actual scores will vary).
 
-Verify in Supabase that the row now has `result_final = true`, correct scores, and `predictions_locked = true`.
+Verify in Supabase that the match now has `result_final = true` and correct scores.
 
-> **If `errors` contains "No ESPN event found":** The ESPN competition slug `fifa.world` may not match WC 2026. Try replacing it with `fifa.worldcup` or `fifa.world2026` in `lib/updateMatchResults.ts` → `fetchESPNScoreboard`. Commit, push, re-test.
+---
+
+## Optional Task 7: Add "Seed schedule" button to Admin panel
+
+Once the schedule-seeding API is in place, an admin UI button is more convenient than running curl.
+
+In `app/admin/AdminClient.tsx`, add a button in the Settings or a new tab that calls `POST /api/admin/schedule-match-jobs`. On click: show a loading state, display the returned `scheduled` count, and list any errors. This is a low-priority enhancement — the curl command in Task 6 Step 3 is sufficient for the tournament.
 
 ---
 
 ## Troubleshooting
 
-**ESPN returns a different team name than what's in the DB:**
-Add an entry to the `OVERRIDES` map in `lib/updateMatchResults.ts`. For example, if ESPN calls a team "IR Iran" but the DB has "Iran":
+**ESPN returns no results / wrong slug:**
+Replace `fifa.world` in `lib/matchResultFetcher.ts` → `fetchFromESPN` with `fifa.worldcup` or `fifa.world2026`. Commit and redeploy. The football-data.org fallback will cover the gap automatically if `FOOTBALL_DATA_API_KEY` is set.
+
+**Team name not matched (job returns `not_finished_yet` but match is done):**
+Check logs in Vercel dashboard. Add the mismatched name to `OVERRIDES` in `lib/matchResultFetcher.ts`:
 ```typescript
 const OVERRIDES: Record<string, string> = {
-  // ...existing entries...
+  // existing...
   iriran: 'iran',
 }
 ```
-Run `npm test` to ensure no regressions, then commit.
+Run `npm test` to verify no regressions, commit, redeploy.
 
-**Cron fires but `updated` is always 0 on days with finished matches:**
-Check `errors` in the response. Common causes:
-1. ESPN slug wrong — see the smoke-test note above. Try the football-data.org fallback instead.
-2. Team name mismatch — add to `OVERRIDES` in `lib/updateMatchResults.ts`.
-3. `kickoff_at` in DB is in the future (wrong timezone) — verify stored value in Supabase SQL editor.
-4. football-data.org fallback not activated — set `FOOTBALL_DATA_API_KEY` in Vercel env vars.
+**Jobs not firing:**
+Check the QStash dashboard → Messages → filter by status. If messages are stuck in "Failed", check the Vercel function logs for the `/api/jobs/update-match-result` endpoint. The most common cause is a missing env var (`QSTASH_CURRENT_SIGNING_KEY`) causing the signature check to throw before any useful log.
 
-**Vercel cron not firing on Hobby plan:**
-Change `vercel.json` schedule to `0 5 * * *` (daily at 5:00 AM UTC). All results from the previous day will be captured in one run.
+**Re-scheduling a single match after a DB correction:**
+```bash
+curl -s -X POST \
+  -H "Content-Type: application/json" \
+  -H "Cookie: <admin session cookie>" \
+  -d '{"matchId":"<id>"}' \
+  https://prode-international.vercel.app/api/admin/schedule-match-jobs | jq
+```
+
+**After the tournament: do any jobs linger?**
+No. QStash messages are one-time deliveries. Once all 5 jobs per match have fired, the queue is empty. There are no recurring crons anywhere in this feature.
