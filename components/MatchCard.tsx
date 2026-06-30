@@ -192,7 +192,7 @@ export function MatchCard({ match, prediction: initialPred, score, isOpen, userI
           <button
             onClick={save}
             disabled={saving || (needsAdvancerPick && !advancer)}
-            className="mt-3 w-full py-2.5 rounded-lg text-sm font-bold transition-all bg-[var(--gold)] text-[var(--bg)] hover:bg-[var(--gold-2)] disabled:opacity-40"
+            className="mt-3 w-full py-2.5 rounded-lg text-sm font-bold transition-all duration-75 bg-[var(--gold)] text-[var(--bg)] hover:bg-[var(--gold-2)] active:scale-[0.98] active:opacity-90 disabled:opacity-40"
           >
             {saving ? 'Saving…' : 'Save'}
           </button>

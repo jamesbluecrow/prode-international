@@ -23,7 +23,7 @@ export function LeaderboardTable({ rows, currentUserId, championMap }: Props) {
           <Link
             key={row.user_id ?? i}
             href={`/players/${row.user_id}`}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors ${
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-all duration-75 active:scale-[0.98] active:opacity-80 ${
               isMe
                 ? 'border-[var(--green)]/40 bg-[var(--green)]/5'
                 : 'border-[var(--border)] bg-[var(--surface)] hover:border-[var(--gold)]/40'

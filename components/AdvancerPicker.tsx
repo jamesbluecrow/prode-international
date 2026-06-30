@@ -28,7 +28,7 @@ export function AdvancerPicker({ homeTeam, awayTeam, homeCode, awayCode, value, 
               type="button"
               onClick={() => !disabled && onChange(side)}
               disabled={disabled}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${
+              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border transition-all duration-75 active:scale-[0.97] active:opacity-80 ${
                 selected
                   ? 'border-[var(--green)] bg-[var(--green)]/10 text-[var(--green)]'
                   : 'border-[var(--border)] text-[var(--muted)] hover:border-[var(--muted)]'

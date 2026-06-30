@@ -13,7 +13,7 @@ export function ScoreInput({ value, onChange, disabled }: Props) {
         type="button"
         onClick={() => onChange(Math.max(0, value - 1))}
         disabled={disabled || value <= 0}
-        className="w-9 h-9 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)] disabled:opacity-30 transition-colors font-bold text-lg"
+        className="w-9 h-9 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)] disabled:opacity-30 transition-all duration-75 active:scale-90 active:bg-[var(--border)] font-bold text-lg"
       >
         −
       </button>
@@ -22,7 +22,7 @@ export function ScoreInput({ value, onChange, disabled }: Props) {
         type="button"
         onClick={() => onChange(value + 1)}
         disabled={disabled}
-        className="w-9 h-9 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)] disabled:opacity-30 transition-colors font-bold text-lg"
+        className="w-9 h-9 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)] disabled:opacity-30 transition-all duration-75 active:scale-90 active:bg-[var(--border)] font-bold text-lg"
       >
         +
       </button>

@@ -78,7 +78,7 @@ export function AppHeader({ user, isAdmin = false }: { user: User; isAdmin?: boo
             <Link
               key={href}
               href={href}
-              className={`flex-1 flex flex-col items-center justify-center gap-1 py-3 min-w-0 transition-colors ${
+              className={`flex-1 flex flex-col items-center justify-center gap-1 py-3 min-w-0 transition-opacity duration-75 active:opacity-50 ${
                 active ? 'text-[var(--gold)]' : 'text-[var(--muted)]'
               }`}
             >
@@ -90,7 +90,7 @@ export function AppHeader({ user, isAdmin = false }: { user: User; isAdmin?: boo
         {isAdmin && (
           <Link
             href="/admin"
-            className={`flex-1 flex flex-col items-center justify-center gap-1 py-3 min-w-0 transition-colors ${
+            className={`flex-1 flex flex-col items-center justify-center gap-1 py-3 min-w-0 transition-opacity duration-75 active:opacity-50 ${
               pathname.startsWith('/admin') ? 'text-[var(--red)]' : 'text-[var(--muted)]'
             }`}
           >

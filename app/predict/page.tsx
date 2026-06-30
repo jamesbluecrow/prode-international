@@ -66,7 +66,7 @@ export default async function PredictPage() {
       {/* Champion pick banner */}
       {championBonus && (
         championPick ? (
-          <Link href="/champion" className="flex items-center gap-3 bg-[var(--surface)] border border-[var(--gold)]/30 rounded-xl px-4 py-3 hover:border-[var(--gold)]/60 transition-colors">
+          <Link href="/champion" className="flex items-center gap-3 bg-[var(--surface)] border border-[var(--gold)]/30 rounded-xl px-4 py-3 hover:border-[var(--gold)]/60 transition-all duration-75 active:scale-[0.98] active:opacity-80">
             <div className="flex-shrink-0">
               {TEAM_CODES[championPick] && (
                 <img
@@ -86,7 +86,7 @@ export default async function PredictPage() {
           </Link>
         ) : (
           !championLocked && (
-            <Link href="/champion" className="flex items-center justify-between bg-[var(--surface)] border border-[var(--border)] rounded-xl px-4 py-3 hover:border-[var(--gold)]/40 transition-colors group">
+            <Link href="/champion" className="flex items-center justify-between bg-[var(--surface)] border border-[var(--border)] rounded-xl px-4 py-3 hover:border-[var(--gold)]/40 transition-all duration-75 active:scale-[0.98] active:opacity-80 group">
               <div>
                 <p className="text-[10px] uppercase tracking-widest text-[var(--muted)]">Champion Pick</p>
                 <p className="text-sm text-[var(--text)] group-hover:text-[var(--gold)] transition-colors">Pick your World Cup winner →</p>

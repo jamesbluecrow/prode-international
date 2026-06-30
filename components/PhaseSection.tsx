@@ -17,7 +17,7 @@ export function PhaseSection({ label, matchCount, completedCount, defaultOpen, c
     <section>
       <button
         onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between py-3 border-b border-[var(--border)] group"
+        className="w-full flex items-center justify-between py-3 border-b border-[var(--border)] group transition-opacity duration-75 active:opacity-60"
       >
         <div className="flex items-center gap-3">
           <span className="font-display text-xl text-[var(--text)] group-hover:text-[var(--gold)] transition-colors">
