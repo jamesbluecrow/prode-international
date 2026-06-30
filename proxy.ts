@@ -25,7 +25,8 @@ export async function proxy(request: NextRequest) {
   if (!user &&
       !request.nextUrl.pathname.startsWith('/login') &&
       !request.nextUrl.pathname.startsWith('/auth') &&
-      !request.nextUrl.pathname.startsWith('/account/set-password')) {
+      !request.nextUrl.pathname.startsWith('/account/set-password') &&
+      !request.nextUrl.pathname.startsWith('/chronicles')) {
     const next = encodeURIComponent(request.nextUrl.pathname + request.nextUrl.search)
     return NextResponse.redirect(new URL(`/login?next=${next}`, request.url))
   }
