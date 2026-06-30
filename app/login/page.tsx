@@ -16,6 +16,12 @@ export default async function LoginPage() {
         </h1>
         <p className="text-center text-[var(--muted)] text-sm mb-8">Prediction Pool</p>
         <LoginForm />
+        <p className="text-center mt-6 text-xs text-[var(--muted)]">
+          Just browsing?{' '}
+          <a href="/chronicles" className="text-[var(--gold)] hover:underline">
+            Read the Buzz ↗
+          </a>
+        </p>
       </div>
     </div>
   )
