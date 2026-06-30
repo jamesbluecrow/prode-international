@@ -33,7 +33,7 @@ export default async function MatchDetailPage({
 
   const userIds = (scores ?? []).map(s => s.user_id).filter(Boolean) as string[]
   const { data: profiles } = userIds.length > 0
-    ? await supabase.from('profiles').select('id, display_name').in('id', userIds)
+    ? await supabase.from('profiles').select('id, display_name, avatar_url').in('id', userIds)
     : { data: [] }
 
   const profileMap = new Map((profiles ?? []).map(p => [p.id, p]))
@@ -88,7 +88,7 @@ export default async function MatchDetailPage({
                   : 'border-[var(--border)] bg-[var(--surface)]'
               }`}
             >
-              <ColorAvatar name={profile?.display_name ?? '?'} />
+              <ColorAvatar name={profile?.display_name ?? '?'} avatarUrl={profile?.avatar_url} />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">
                   {profile?.display_name ?? 'User'}

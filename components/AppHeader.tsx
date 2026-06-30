@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import type { User } from '@supabase/supabase-js'
-import { Target, Trophy, Users, Crown, Newspaper, BookOpen, ShieldAlert } from 'lucide-react'
+import { Target, Trophy, Users, Crown, Newspaper, BookOpen, ShieldAlert, UserCircle } from 'lucide-react'
 
 const NAV = [
   { href: '/predict',    label: 'Predict',  Icon: Target },
@@ -59,6 +59,12 @@ export function AppHeader({ user, isAdmin = false }: { user: User; isAdmin?: boo
             </Link>
           )}
         </nav>
+        <Link
+          href="/account"
+          className={`transition-colors ${pathname.startsWith('/account') ? 'text-[var(--gold)]' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}
+        >
+          <UserCircle size={20} />
+        </Link>
         <button
           onClick={signOut}
           className="text-xs text-[var(--muted)] hover:text-[var(--red)] transition-colors"

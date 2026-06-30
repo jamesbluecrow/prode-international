@@ -30,7 +30,7 @@ export function LeaderboardTable({ rows, currentUserId, championMap }: Props) {
             }`}
           >
             <RankBadge rank={i + 1} />
-            <ColorAvatar name={name} />
+            <ColorAvatar name={name} avatarUrl={row.avatar_url} />
             <div className="flex-1 min-w-0">
               <p className={`font-medium truncate ${isMe ? 'text-[var(--green)]' : 'text-[var(--text)]'}`}>
                 {name}

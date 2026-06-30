@@ -1,6 +1,25 @@
 const COLORS = ['#f5c542', '#34d399', '#4c8dff', '#f87171', '#a78bfa', '#fb923c', '#38bdf8']
 
-export function ColorAvatar({ name, size = 32 }: { name: string; size?: number }) {
+interface Props {
+  name: string
+  avatarUrl?: string | null
+  size?: number
+}
+
+export function ColorAvatar({ name, avatarUrl, size = 32 }: Props) {
+  if (avatarUrl) {
+    return (
+      <img
+        src={avatarUrl}
+        alt={name}
+        width={size}
+        height={size}
+        style={{ width: size, height: size }}
+        className="rounded-lg object-cover flex-shrink-0"
+      />
+    )
+  }
+
   const color = COLORS[name.charCodeAt(0) % COLORS.length]
   const initial = name.charAt(0).toUpperCase()
   return (
