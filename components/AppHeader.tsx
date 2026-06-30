@@ -11,7 +11,7 @@ const NAV = [
   { href: '/ranking',    label: 'Ranking',  Icon: Trophy },
   { href: '/groups',     label: 'Groups',   Icon: Users },
   { href: '/champion',   label: 'Champion', Icon: Crown },
-  { href: '/chronicles', label: 'Scoop',    Icon: Newspaper },
+  { href: '/chronicles', label: 'Buzz',      Icon: Newspaper },
   { href: '/rules',      label: 'Rules',    Icon: BookOpen },
 ]
 
