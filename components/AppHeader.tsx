@@ -4,14 +4,15 @@ import { usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import type { User } from '@supabase/supabase-js'
+import { Target, Trophy, Users, Crown, Newspaper, BookOpen, ShieldAlert } from 'lucide-react'
 
 const NAV = [
-  { href: '/predict', label: 'Predict' },
-  { href: '/ranking', label: 'Ranking' },
-  { href: '/groups', label: 'Groups' },
-  { href: '/champion', label: 'Champion' },
-  { href: '/chronicles', label: 'Chronicles' },
-  { href: '/rules', label: 'Rules' },
+  { href: '/predict',    label: 'Predict',  Icon: Target },
+  { href: '/ranking',    label: 'Ranking',  Icon: Trophy },
+  { href: '/groups',     label: 'Groups',   Icon: Users },
+  { href: '/champion',   label: 'Champion', Icon: Crown },
+  { href: '/chronicles', label: 'Scoop',    Icon: Newspaper },
+  { href: '/rules',      label: 'Rules',    Icon: BookOpen },
 ]
 
 export function AppHeader({ user, isAdmin = false }: { user: User; isAdmin?: boolean }) {
@@ -65,27 +66,36 @@ export function AppHeader({ user, isAdmin = false }: { user: User; isAdmin?: boo
           Sign out
         </button>
       </div>
+
       {/* Mobile bottom nav */}
-      <nav className="sm:hidden fixed bottom-0 inset-x-0 bg-[var(--surface)] border-t border-[var(--border)] flex z-50">
-        {NAV.map(({ href, label }) => (
-          <Link
-            key={href}
-            href={href}
-            className={`flex-1 py-3 text-center text-xs font-medium transition-colors ${
-              pathname.startsWith(href) ? 'text-[var(--gold)]' : 'text-[var(--muted)]'
-            }`}
-          >
-            {label}
-          </Link>
-        ))}
+      <nav
+        className="sm:hidden fixed bottom-0 inset-x-0 bg-[var(--surface)] border-t border-[var(--border)] flex z-50"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
+        {NAV.map(({ href, label, Icon }) => {
+          const active = pathname.startsWith(href)
+          return (
+            <Link
+              key={href}
+              href={href}
+              className={`flex-1 flex flex-col items-center justify-center gap-1 py-3 min-w-0 transition-colors ${
+                active ? 'text-[var(--gold)]' : 'text-[var(--muted)]'
+              }`}
+            >
+              <Icon size={20} strokeWidth={active ? 2.5 : 1.75} />
+              <span className="text-[10px] font-medium leading-none tracking-wide">{label}</span>
+            </Link>
+          )
+        })}
         {isAdmin && (
           <Link
             href="/admin"
-            className={`flex-1 py-3 text-center text-xs font-medium transition-colors ${
+            className={`flex-1 flex flex-col items-center justify-center gap-1 py-3 min-w-0 transition-colors ${
               pathname.startsWith('/admin') ? 'text-[var(--red)]' : 'text-[var(--muted)]'
             }`}
           >
-            Admin
+            <ShieldAlert size={20} strokeWidth={pathname.startsWith('/admin') ? 2.5 : 1.75} />
+            <span className="text-[10px] font-medium leading-none tracking-wide">Admin</span>
           </Link>
         )}
       </nav>
