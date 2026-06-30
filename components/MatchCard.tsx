@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Match, Prediction, PredictionScore, Side } from '@/lib/types'
 import { ScoreInput } from './ScoreInput'
 import { AdvancerPicker } from './AdvancerPicker'
@@ -39,7 +39,17 @@ export function MatchCard({ match, prediction: initialPred, score, isOpen, userI
   // Lock immediately if prediction already exists
   const [locked, setLocked] = useState(initialPred !== null)
   const [saving, setSaving] = useState(false)
+  const [kickoffLabel, setKickoffLabel] = useState<string | null>(null)
   const supabase = createClient()
+
+  useEffect(() => {
+    setKickoffLabel(new Date(match.kickoff_at).toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }))
+  }, [match.kickoff_at])
 
   const canEdit = isOpen && !locked
 
@@ -87,16 +97,8 @@ export function MatchCard({ match, prediction: initialPred, score, isOpen, userI
         </div>
         <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
           <span className="text-xs text-[var(--muted)]">vs</span>
-          <span
-            suppressHydrationWarning
-            className="text-[10px] text-[var(--muted)] tabular-nums"
-          >
-            {new Date(match.kickoff_at).toLocaleString(undefined, {
-              month: 'short',
-              day: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-            })}
+          <span className="text-[10px] text-[var(--muted)] tabular-nums">
+            {kickoffLabel}
           </span>
         </div>
         <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
