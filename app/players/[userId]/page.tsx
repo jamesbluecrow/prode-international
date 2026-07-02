@@ -91,7 +91,7 @@ export default async function PlayerPage({
         ← Rankings
       </Link>
 
-      <div className="flex flex-col items-start gap-3 py-2">
+      <div className="flex flex-col items-center gap-3 py-2">
         <ColorAvatar name={profile.display_name} avatarUrl={profile.avatar_url ?? null} size={144} />
         <h1 className="font-display text-3xl text-[var(--gold)]">
           {profile.display_name.toUpperCase()}
