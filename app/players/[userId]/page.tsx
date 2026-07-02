@@ -3,6 +3,7 @@ import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import { TEAM_CODES } from '@/lib/teamCodes'
+import { ColorAvatar } from '@/components/ColorAvatar'
 import type { Stage } from '@/lib/types'
 
 const STAGE_LABELS: Record<Stage, string> = {
@@ -28,7 +29,7 @@ export default async function PlayerPage({
   if (!user) redirect('/login')
 
   const [{ data: profile }, { data: targetPreds }, { data: myPreds }] = await Promise.all([
-    supabase.from('profiles').select('display_name').eq('id', userId).single(),
+    supabase.from('profiles').select('display_name, avatar_url').eq('id', userId).single(),
     supabase.from('predictions').select('match_id, pred_home, pred_away, pred_advancer').eq('user_id', userId),
     supabase.from('predictions').select('match_id').eq('user_id', user.id),
   ])
@@ -90,9 +91,12 @@ export default async function PlayerPage({
         ← Rankings
       </Link>
 
-      <h1 className="font-display text-3xl text-[var(--gold)]">
-        {profile.display_name.toUpperCase()}
-      </h1>
+      <div className="flex flex-col items-center gap-3 py-2">
+        <ColorAvatar name={profile.display_name} avatarUrl={profile.avatar_url ?? null} size={72} />
+        <h1 className="font-display text-3xl text-[var(--gold)]">
+          {profile.display_name.toUpperCase()}
+        </h1>
+      </div>
 
       {!isOwnProfile && (
         <p className="text-xs text-[var(--muted)]">
