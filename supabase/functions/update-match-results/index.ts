@@ -20,11 +20,10 @@ const TEAM_CODES: Record<string, string> = {
 };
 
 function isPlaceholderName(name: string): boolean {
-  // Real team if it's in TEAM_CODES; otherwise it's a bracket placeholder
   return !(name in TEAM_CODES);
 }
 
-// ─── Team name normalisation (for result matching) ────────────────────────────
+// ─── Team name normalisation ──────────────────────────────────────────────────
 
 const OVERRIDES: Record<string, string> = {
   unitedstates: "usa",
@@ -34,6 +33,9 @@ const OVERRIDES: Record<string, string> = {
   democraticrepublicofthecongo: "drcongo",
   drcongo: "drcongo",
   congod: "drcongo",
+  switzerlandu23: "switzerland",
+  sui: "switzerland",
+  alg: "algeria",
 };
 
 function normalizeTeamName(name: string): string {
@@ -66,23 +68,40 @@ function toDateKey(isoString: string): string {
   ].join("");
 }
 
-const ESPN_SLUGS = ["fifa.world", "fifa.worldcup", "fifa.world2026"];
+// Try multiple ESPN endpoint patterns for WC 2026; return all soccer events on
+// that date. The slug-based endpoints are tried first; the generic soccer
+// scoreboard (which returns ALL competitions) is the final fallback.
+async function fetchESPNEvents(dateKey: string): Promise<any[]> {
+  const slugUrls = [
+    // Competition-specific (fastest, fewest results)
+    `https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates=${dateKey}&limit=50`,
+    `https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world2026/scoreboard?dates=${dateKey}&limit=50`,
+    `https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.worldcup/scoreboard?dates=${dateKey}&limit=50`,
+    `https://site.api.espn.com/apis/site/v2/sports/soccer/FIFA.WORLD/scoreboard?dates=${dateKey}&limit=50`,
+    // Generic soccer scoreboard – returns everything, so we filter by team name
+    `https://site.api.espn.com/apis/site/v2/sports/soccer/scoreboard?dates=${dateKey}&limit=100`,
+  ];
 
-// Try ESPN slugs and return events for a given date, or null if none work
-async function fetchESPNEvents(dateKey: string): Promise<any[] | null> {
-  for (const slug of ESPN_SLUGS) {
+  for (const url of slugUrls) {
     try {
-      const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${slug}/scoreboard?dates=${dateKey}&limit=50`;
-      const res = await fetch(url, { headers: { "User-Agent": "prode-international/1.0" } });
+      const res = await fetch(url, {
+        headers: { "User-Agent": "prode-international/1.0" },
+        signal: AbortSignal.timeout(8000),
+      });
       if (!res.ok) continue;
       const data = await res.json();
       const events: any[] = data.events ?? [];
-      if (events.length > 0) return events;
-    } catch {
+      if (events.length > 0) {
+        console.log(`ESPN: ${events.length} events from ${url}`);
+        return events;
+      }
+    } catch (e) {
+      console.warn(`ESPN fetch failed (${url}): ${e}`);
       continue;
     }
   }
-  return null;
+  console.warn(`ESPN: no events found for ${dateKey} across all slugs`);
+  return [];
 }
 
 type MatchResult = { homeScore: number; awayScore: number; penaltyWinner: "home" | "away" | null };
@@ -106,12 +125,22 @@ async function fetchFromESPN(match: MatchRow, events: any[]): Promise<MatchResul
     const awayComp = comp.competitors?.find((c: any) => c.homeAway === "away");
     if (!homeComp || !awayComp) continue;
 
-    if (
-      normalizeTeamName(homeComp.team.displayName) !== homeNorm ||
-      normalizeTeamName(awayComp.team.displayName) !== awayNorm
-    ) continue;
+    const espnHome = normalizeTeamName(homeComp.team?.displayName ?? homeComp.team?.name ?? "");
+    const espnAway = normalizeTeamName(awayComp.team?.displayName ?? awayComp.team?.name ?? "");
 
-    if (!event.status?.type?.completed) return null;
+    // Also try abbreviations (ESPN sometimes uses 3-letter codes)
+    const espnHomeAbbr = normalizeTeamName(homeComp.team?.abbreviation ?? "");
+    const espnAwayAbbr = normalizeTeamName(awayComp.team?.abbreviation ?? "");
+
+    const homeMatch = espnHome === homeNorm || espnHomeAbbr === homeNorm;
+    const awayMatch = espnAway === awayNorm || espnAwayAbbr === awayNorm;
+
+    if (!homeMatch || !awayMatch) continue;
+
+    if (!event.status?.type?.completed) {
+      console.log(`ESPN: found ${match.home_team} vs ${match.away_team} but not completed yet`);
+      return null;
+    }
 
     let penaltyWinner: "home" | "away" | null = null;
     if (match.is_knockout) {
@@ -156,45 +185,50 @@ async function fetchFromFDO(match: MatchRow): Promise<MatchResult | null> {
   const dateStr = new Date(match.kickoff_at).toISOString().slice(0, 10);
   const url = `https://api.football-data.org/v4/competitions/WC/matches?dateFrom=${dateStr}&dateTo=${dateStr}&status=FINISHED`;
 
-  const res = await fetch(url, { headers: { "X-Auth-Token": apiKey } });
-  if (!res.ok) throw new Error(`football-data.org ${res.status}`);
+  try {
+    const res = await fetch(url, {
+      headers: { "X-Auth-Token": apiKey },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) throw new Error(`football-data.org ${res.status}`);
 
-  const data = await res.json();
-  const homeNorm = normalizeTeamName(match.home_team);
-  const awayNorm = normalizeTeamName(match.away_team);
+    const data = await res.json();
+    const homeNorm = normalizeTeamName(match.home_team);
+    const awayNorm = normalizeTeamName(match.away_team);
 
-  for (const m of (data.matches ?? []) as any[]) {
-    if (m.status !== "FINISHED") continue;
-    if (
-      normalizeTeamName(m.homeTeam.name) !== homeNorm ||
-      normalizeTeamName(m.awayTeam.name) !== awayNorm
-    ) continue;
+    for (const m of (data.matches ?? []) as any[]) {
+      if (m.status !== "FINISHED") continue;
+      if (
+        normalizeTeamName(m.homeTeam.name) !== homeNorm ||
+        normalizeTeamName(m.awayTeam.name) !== awayNorm
+      ) continue;
 
-    let penaltyWinner: "home" | "away" | null = null;
-    if (match.is_knockout) {
-      const penalties = m.score.penalties as { home: number; away: number } | null;
-      if (penalties) {
-        penaltyWinner = penalties.home > penalties.away ? "home" : "away";
+      let penaltyWinner: "home" | "away" | null = null;
+      if (match.is_knockout) {
+        const penalties = m.score.penalties as { home: number; away: number } | null;
+        if (penalties) {
+          penaltyWinner = penalties.home > penalties.away ? "home" : "away";
+        }
       }
-    }
 
-    return {
-      homeScore: m.score.fullTime.home as number,
-      awayScore: m.score.fullTime.away as number,
-      penaltyWinner,
-    };
+      return {
+        homeScore: m.score.fullTime.home as number,
+        awayScore: m.score.fullTime.away as number,
+        penaltyWinner,
+      };
+    }
+  } catch (e) {
+    console.warn(`FDO failed for ${match.home_team} vs ${match.away_team}: ${e}`);
   }
 
   return null;
 }
 
 // ─── Bracket sync: update placeholder team names from ESPN ───────────────────
-// After matches finish, ESPN replaces "Round of 32 14 Winner" with the real
-// team name. This function finds our DB rows with placeholder names and patches
-// them with the real teams + flag codes.
+// Runs after every result update AND on a standalone schedule. Finds DB rows
+// with placeholder home/away names and patches them with real ESPN team data.
 
 async function syncBracketFromESPN(supabase: any): Promise<{ synced: number; errors: string[] }> {
-  // Find upcoming matches that still have placeholder team names
   const { data: upcoming } = await supabase
     .from("matches")
     .select("id, home_team, away_team, kickoff_at")
@@ -202,7 +236,6 @@ async function syncBracketFromESPN(supabase: any): Promise<{ synced: number; err
 
   if (!upcoming || upcoming.length === 0) return { synced: 0, errors: [] };
 
-  // Filter to only rows where at least one team name is a placeholder
   const placeholderMatches = upcoming.filter(
     (m: any) => isPlaceholderName(m.home_team) || isPlaceholderName(m.away_team)
   );
@@ -222,15 +255,15 @@ async function syncBracketFromESPN(supabase: any): Promise<{ synced: number; err
 
   for (const [dateKey, matches] of byDate) {
     const events = await fetchESPNEvents(dateKey);
-    if (!events) continue;
+    if (events.length === 0) continue;
 
     for (const dbMatch of matches) {
       const kickoffMs = new Date(dbMatch.kickoff_at).getTime();
 
-      // Find the ESPN event closest in time to this DB match (within 30 min)
+      // Match ESPN event by kickoff time ±45min (wider window for schedule shifts)
       const espnEvent = events.find((e: any) => {
         const diff = Math.abs(new Date(e.date).getTime() - kickoffMs);
-        return diff < 30 * 60 * 1000;
+        return diff < 45 * 60 * 1000;
       });
 
       if (!espnEvent) continue;
@@ -241,28 +274,27 @@ async function syncBracketFromESPN(supabase: any): Promise<{ synced: number; err
       const awayComp = comp.competitors?.find((c: any) => c.homeAway === "away");
       if (!homeComp || !awayComp) continue;
 
-      const newHome: string = homeComp.team.displayName;
-      const newAway: string = awayComp.team.displayName;
+      const newHome: string = homeComp.team?.displayName ?? homeComp.team?.name ?? "";
+      const newAway: string = awayComp.team?.displayName ?? awayComp.team?.name ?? "";
 
-      // Skip if ESPN still shows placeholder text (e.g. "Round of 32 14 Winner")
-      if (newHome.toLowerCase().includes("winner") ||
-        newAway.toLowerCase().includes("winner") ||
-        newHome.toLowerCase().includes("loser") ||
-        newAway.toLowerCase().includes("loser") ||
-        newHome.toLowerCase().includes("round of") ||
-        newAway.toLowerCase().includes("round of")) {
-        continue;
-      }
+      if (!newHome || !newAway) continue;
 
-      // Only update if something actually changed
-      if (newHome === dbMatch.home_team && newAway === dbMatch.away_team) continue;
+      // Skip if ESPN still has placeholder-style text
+      const looksLikePlaceholder = (n: string) =>
+        /winner|loser|round of|r\d+\s*w/i.test(n);
+      if (looksLikePlaceholder(newHome) || looksLikePlaceholder(newAway)) continue;
+
+      // Skip if there's no change
+      const homeChanged = newHome !== dbMatch.home_team && !isPlaceholderName(newHome);
+      const awayChanged = newAway !== dbMatch.away_team && !isPlaceholderName(newAway);
+      if (!homeChanged && !awayChanged) continue;
 
       const update: Record<string, string | null> = {};
-      if (newHome !== dbMatch.home_team) {
+      if (homeChanged) {
         update.home_team = newHome;
         update.home_code = TEAM_CODES[newHome] ?? null;
       }
-      if (newAway !== dbMatch.away_team) {
+      if (awayChanged) {
         update.away_team = newAway;
         update.away_code = TEAM_CODES[newAway] ?? null;
       }
@@ -273,9 +305,9 @@ async function syncBracketFromESPN(supabase: any): Promise<{ synced: number; err
         .eq("id", dbMatch.id);
 
       if (error) {
-        errors.push(`Bracket sync failed for match ${dbMatch.id}: ${error.message}`);
+        errors.push(`Bracket sync failed for ${dbMatch.id}: ${error.message}`);
       } else {
-        console.log(`Bracket synced: ${newHome} vs ${newAway} (was: ${dbMatch.home_team} vs ${dbMatch.away_team})`);
+        console.log(`Bracket: ${dbMatch.home_team} vs ${dbMatch.away_team} → ${newHome} vs ${newAway}`);
         synced++;
       }
     }
@@ -289,14 +321,21 @@ async function syncBracketFromESPN(supabase: any): Promise<{ synced: number; err
 export default {
   fetch: withSupabase({ auth: ["secret"] }, async (req, ctx) => {
     let matchId: string | null = null;
+    let bracketOnly = false;
     try {
       const body = await req.json();
       matchId = body.matchId ?? null;
+      bracketOnly = body.bracketOnly === true;
     } catch { /* empty body = process all pending */ }
+
+    // Bracket-only mode: just sync team names, skip result fetching
+    if (bracketOnly) {
+      const bracket = await syncBracketFromESPN(ctx.supabaseAdmin);
+      return Response.json({ bracketSynced: bracket.synced, bracketErrors: bracket.errors });
+    }
 
     const cutoff = new Date(Date.now() - 90 * 60 * 1000).toISOString();
 
-    // Cache ESPN events per date to avoid redundant API calls
     const espnCache = new Map<string, any[]>();
 
     let query = ctx.supabaseAdmin
@@ -325,27 +364,22 @@ export default {
 
       if (!espnCache.has(dateKey)) {
         const events = await fetchESPNEvents(dateKey);
-        espnCache.set(dateKey, events ?? []);
+        espnCache.set(dateKey, events);
       }
 
       const espnEvents = espnCache.get(dateKey)!;
 
-      // Try ESPN first (using cached events), then FDO fallback
       let result: MatchResult | null = null;
       if (espnEvents.length > 0) {
         result = await fetchFromESPN(match, espnEvents);
       }
       if (!result) {
-        try {
-          result = await fetchFromFDO(match);
-        } catch (e) {
-          console.warn(`FDO failed for ${match.home_team} vs ${match.away_team}: ${e}`);
-        }
+        result = await fetchFromFDO(match);
       }
 
       if (!result) {
         skipped++;
-        errors.push(`No result yet: ${match.home_team} vs ${match.away_team}`);
+        errors.push(`No result: ${match.home_team} vs ${match.away_team}`);
         continue;
       }
 
@@ -370,12 +404,18 @@ export default {
       }
     }
 
-    // After updating results, sync bracket pairings for next rounds
+    // Always sync bracket after processing results
     const bracket = await syncBracketFromESPN(ctx.supabaseAdmin);
     if (bracket.synced > 0) {
-      console.log(`Bracket: ${bracket.synced} upcoming match(es) updated with real team names`);
+      console.log(`Bracket: ${bracket.synced} match(es) updated`);
     }
 
-    return Response.json({ updated, skipped, errors, bracketSynced: bracket.synced, bracketErrors: bracket.errors });
+    return Response.json({
+      updated,
+      skipped,
+      errors,
+      bracketSynced: bracket.synced,
+      bracketErrors: bracket.errors,
+    });
   }),
 };
