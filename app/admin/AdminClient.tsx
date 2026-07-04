@@ -5,6 +5,65 @@ import type { Match, PhaseDeadline, TournamentBonus, Profile } from '@/lib/types
 
 type NewsItem = { id: string; image_url: string; caption: string | null; sort_order: number; created_at: string }
 
+function PredRow({
+  match, initial, saving, onSave,
+}: {
+  match: Match
+  initial: { pred_home: number; pred_away: number; pred_advancer: string | null } | null
+  saving: boolean
+  onSave: (h: number, a: number, adv: string | null) => void
+}) {
+  const [home, setHome] = useState<string>(initial?.pred_home?.toString() ?? '')
+  const [away, setAway] = useState<string>(initial?.pred_away?.toString() ?? '')
+  const [adv, setAdv] = useState<string>(initial?.pred_advancer ?? '')
+
+  function tryCommit(newHome = home, newAway = away, newAdv = adv) {
+    const h = parseInt(newHome)
+    const a = parseInt(newAway)
+    if (isNaN(h) || isNaN(a)) return
+    onSave(h, a, newAdv || null)
+  }
+
+  const isDraw = home !== '' && away !== '' && home === away
+  return (
+    <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-3 flex items-center gap-3 flex-wrap">
+      <span className="text-sm text-[var(--text)] flex-1 min-w-0 truncate">
+        {match.home_team} vs {match.away_team}
+      </span>
+      <div className="flex items-center gap-2 flex-shrink-0">
+        <input
+          type="number" min={0} max={20} value={home} placeholder="H"
+          onChange={e => setHome(e.target.value)}
+          onBlur={() => tryCommit()}
+          className="w-14 bg-[var(--surface-2)] border border-[var(--border)] rounded px-2 py-1.5 text-center text-sm tabular text-[var(--text)]"
+        />
+        <span className="text-[var(--muted)] text-xs">–</span>
+        <input
+          type="number" min={0} max={20} value={away} placeholder="A"
+          onChange={e => setAway(e.target.value)}
+          onBlur={() => tryCommit()}
+          className="w-14 bg-[var(--surface-2)] border border-[var(--border)] rounded px-2 py-1.5 text-center text-sm tabular text-[var(--text)]"
+        />
+      </div>
+      {match.is_knockout && isDraw && (
+        <select
+          value={adv}
+          onChange={e => { setAdv(e.target.value); tryCommit(home, away, e.target.value) }}
+          className="bg-[var(--surface-2)] border border-[var(--border)] rounded px-2 py-1.5 text-xs text-[var(--text)]"
+        >
+          <option value="">Advancer?</option>
+          <option value="home">{match.home_team}</option>
+          <option value="away">{match.away_team}</option>
+        </select>
+      )}
+      {saving
+        ? <span className="text-xs text-[var(--muted)]">…</span>
+        : initial && <span className="text-xs text-[var(--green)]">{initial.pred_home}–{initial.pred_away}{initial.pred_advancer ? ` (${initial.pred_advancer})` : ''}</span>
+      }
+    </div>
+  )
+}
+
 interface Props {
   matches: Match[]
   deadlines: PhaseDeadline[]
@@ -14,7 +73,7 @@ interface Props {
   currentUserId: string
 }
 
-type Tab = 'results' | 'locks' | 'deadlines' | 'champion' | 'news' | 'admins'
+type Tab = 'results' | 'locks' | 'deadlines' | 'champion' | 'news' | 'admins' | 'predictions'
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'results', label: 'Results' },
@@ -23,7 +82,16 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'champion', label: 'Champion' },
   { key: 'news', label: 'News' },
   { key: 'admins', label: 'Admins' },
+  { key: 'predictions', label: 'Predictions' },
 ]
+
+type PredMap = Record<string, { pred_home: number; pred_away: number; pred_advancer: string | null }>
+
+const STAGE_ORDER = ['group', 'round_of_32', 'round_of_16', 'quarter', 'semi', 'third_place', 'final']
+const STAGE_LABELS: Record<string, string> = {
+  group: 'Group Stage', round_of_32: 'Round of 32', round_of_16: 'Round of 16',
+  quarter: 'Quarterfinals', semi: 'Semifinals', third_place: 'Third Place', final: 'Final',
+}
 
 export function AdminClient({
   matches: initMatches,
@@ -40,6 +108,10 @@ export function AdminClient({
   const [newsItems, setNewsItems] = useState<NewsItem[]>(initNews)
   const [tab, setTab] = useState<Tab>('results')
   const [saving, setSaving] = useState<string | null>(null)
+  const [predUserId, setPredUserId] = useState('')
+  const [predMap, setPredMap] = useState<PredMap>({})
+  const [predLoading, setPredLoading] = useState(false)
+  const [predSaving, setPredSaving] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [refreshResult, setRefreshResult] = useState<{ updated: number; skipped: number; errors: string[] } | null>(null)
   const [caption, setCaption] = useState('')
@@ -113,6 +185,30 @@ export function AdminClient({
       if (fresh) setMatches(fresh as Match[])
     }
     setRefreshing(false)
+  }
+
+  async function loadPredictions(userId: string) {
+    if (!userId) { setPredMap({}); return }
+    setPredLoading(true)
+    const res = await fetch(`/api/admin/predictions?userId=${userId}`)
+    const data = await res.json()
+    const map: PredMap = {}
+    for (const p of data.predictions ?? []) {
+      map[p.match_id] = { pred_home: p.pred_home, pred_away: p.pred_away, pred_advancer: p.pred_advancer }
+    }
+    setPredMap(map)
+    setPredLoading(false)
+  }
+
+  async function savePrediction(matchId: string, predHome: number, predAway: number, predAdvancer: string | null) {
+    setPredSaving(matchId)
+    await fetch('/api/admin/predictions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: predUserId, matchId, predHome, predAway, predAdvancer }),
+    })
+    setPredMap(m => ({ ...m, [matchId]: { pred_home: predHome, pred_away: predAway, pred_advancer: predAdvancer } }))
+    setPredSaving(null)
   }
 
   async function toggleAdmin(userId: string, isAdmin: boolean) {
@@ -376,6 +472,41 @@ export function AdminClient({
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {tab === 'predictions' && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <select
+              value={predUserId}
+              onChange={e => { setPredUserId(e.target.value); loadPredictions(e.target.value) }}
+              className="flex-1 bg-[var(--surface-2)] border border-[var(--border)] rounded px-3 py-2 text-sm text-[var(--text)]"
+            >
+              <option value="">— Select a player —</option>
+              {profiles.map(p => (
+                <option key={p.id} value={p.id}>{p.display_name}</option>
+              ))}
+            </select>
+            {predLoading && <span className="text-xs text-[var(--muted)]">Loading…</span>}
+          </div>
+
+          {predUserId && !predLoading && STAGE_ORDER.filter(s => matches.some(m => m.stage === s)).map(stage => (
+            <div key={stage} className="space-y-2">
+              <h3 className="text-xs uppercase tracking-widest text-[var(--muted)] font-medium pt-2">
+                {STAGE_LABELS[stage] ?? stage}
+              </h3>
+              {matches.filter(m => m.stage === stage).map(m => (
+                <PredRow
+                  key={`${m.id}-${predUserId}`}
+                  match={m}
+                  initial={predMap[m.id] ?? null}
+                  saving={predSaving === m.id}
+                  onSave={(h, a, adv) => savePrediction(m.id, h, a, adv)}
+                />
+              ))}
+            </div>
+          ))}
         </div>
       )}
 
